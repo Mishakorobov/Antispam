@@ -1,0 +1,305 @@
+package ru.antispam.app.data.repository
+
+import android.util.Log
+import androidx.room.withTransaction
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import ru.antispam.app.data.local.AppDatabase
+import ru.antispam.app.data.local.entity.BlockedPoolEntity
+import ru.antispam.app.data.remote.AntiSpamApiService
+import ru.antispam.app.data.remote.NetworkModule
+import ru.antispam.app.data.remote.dto.BatchReportItemDto
+import ru.antispam.app.data.remote.dto.BatchReportRequestDto
+import java.io.IOException
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+
+enum class SyncSource {
+    PRIMARY_API,
+    CDN_FALLBACK
+}
+
+sealed class SyncResult {
+    data class Success(
+        val source: SyncSource,
+        val currentVersion: Long,
+        val addedCount: Int,
+        val removedCount: Int
+    ) : SyncResult()
+
+    object NotModified : SyncResult()
+
+    data class Failure(
+        val message: String,
+        val lastError: Throwable? = null
+    ) : SyncResult()
+}
+
+data class ParsedAspb(
+    val protoVersion: Int,
+    val currentVersion: Long,
+    val isFullSync: Boolean,
+    val hasMore: Boolean,
+    val added: List<BlockedPoolEntity>,
+    val removed: List<Pair<Long, Long>>
+)
+
+class SyncRepository(
+    private val db: AppDatabase,
+    private val api: AntiSpamApiService = NetworkModule.apiService,
+    private val httpClient: OkHttpClient = NetworkModule.okHttpClient,
+    private val fallbackCdnUrls: List<String> = DEFAULT_CDN_URLS
+) {
+
+    companion object {
+        private const val TAG = "SyncRepository"
+        const val KEY_LAST_DELTA_VERSION = "last_delta_version"
+        const val KEY_LAST_SYNC_TIMESTAMP = "last_sync_timestamp"
+        const val KEY_LAST_SYNC_SOURCE = "last_sync_source"
+
+        val DEFAULT_CDN_URLS = listOf(
+            "https://cdn.jsdelivr.net/gh/antispam-project/antispam@latest-data/data/pools.aspb",
+            "https://raw.githubusercontent.com/antispam-project/antispam/latest-data/data/pools.aspb",
+            "https://github.com/antispam-project/antispam/releases/download/latest-data/pools.aspb"
+        )
+
+        /**
+         * Pure parser for ASPB binary protocol payload.
+         * Header (16 bytes): 'ASPB', proto_ver(2), current_ver(4), flags(2), reserved(4)=0
+         * Added: count(4) + list of (range_start:8, range_end:8, cat:1, ver:4) [21 bytes each]
+         * Removed: count(4) + list of (range_start:8, range_end:8, ver:4) [20 bytes each]
+         */
+        fun parseAspbPayload(bytes: ByteArray, timestamp: Long = System.currentTimeMillis()): ParsedAspb {
+            if (bytes.size < 16) {
+                throw IllegalArgumentException("Payload too short for ASPB header: ${bytes.size} bytes")
+            }
+
+            val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.BIG_ENDIAN)
+
+            // 1. Verify Magic
+            val magic = ByteArray(4)
+            buffer.get(magic)
+            if (magic[0] != 'A'.code.toByte() || magic[1] != 'S'.code.toByte() ||
+                magic[2] != 'P'.code.toByte() || magic[3] != 'B'.code.toByte()
+            ) {
+                throw IllegalArgumentException("Invalid ASPB magic signature: ${String(magic)}")
+            }
+
+            val protoVer = buffer.short.toInt() and 0xFFFF
+            val currentVer = buffer.int.toLong() and 0xFFFFFFFFL
+            val flags = buffer.short.toInt() and 0xFFFF
+            val isFullSync = (flags and 1) != 0
+            val hasMore = (flags and 2) != 0
+            val reserved = buffer.int
+
+            // 2. Added chunk
+            val addedCount = buffer.int.toLong() and 0xFFFFFFFFL
+            val addedList = ArrayList<BlockedPoolEntity>(addedCount.toInt().coerceAtMost(100_000))
+            for (i in 0 until addedCount) {
+                val rStart = buffer.long
+                val rEnd = buffer.long
+                val catByte = buffer.get()
+                val ver = buffer.int
+                addedList.add(
+                    BlockedPoolEntity(
+                        rangeStart = rStart,
+                        rangeEnd = rEnd,
+                        operator = null,
+                        category = categoryByteToString(catByte),
+                        updatedAt = timestamp
+                    )
+                )
+            }
+
+            // 3. Removed chunk
+            val removedCount = buffer.int.toLong() and 0xFFFFFFFFL
+            val removedList = ArrayList<Pair<Long, Long>>(removedCount.toInt().coerceAtMost(100_000))
+            for (i in 0 until removedCount) {
+                val rStart = buffer.long
+                val rEnd = buffer.long
+                val ver = buffer.int
+                removedList.add(Pair(rStart, rEnd))
+            }
+
+            return ParsedAspb(
+                protoVersion = protoVer,
+                currentVersion = currentVer,
+                isFullSync = isFullSync,
+                hasMore = hasMore,
+                added = addedList,
+                removed = removedList
+            )
+        }
+
+        fun categoryByteToString(catByte: Byte): String {
+            return when (catByte.toInt()) {
+                1 -> "SPAM"
+                2 -> "SURVEY"
+                3 -> "FINANCIAL"
+                4 -> "SPOOFING"
+                5 -> "SILENT"
+                6 -> "VIP_MODE"
+                7 -> "FOREIGN_PLUS7"
+                else -> "SPAM"
+            }
+        }
+    }
+
+    /**
+     * Executes Dual-Circuit synchronization:
+     * Circuit 1 (Primary): Fast incremental delta sync via REST API.
+     * Circuit 2 (Secondary Fallback): High-availability binary ASPB download via Global CDN.
+     */
+    suspend fun synchronize(deviceHash: String? = null): SyncResult = withContext(Dispatchers.IO) {
+        // Step 0: Flush offline reports if device hash provided
+        if (deviceHash != null) {
+            try {
+                flushPendingReports(deviceHash)
+            } catch (e: Exception) {
+                Log.w(TAG, "Non-critical: Failed to flush offline reports before sync: ${e.message}")
+            }
+        }
+
+        // Circuit 1: Primary API
+        try {
+            val primaryResult = executePrimarySync()
+            if (primaryResult != null) {
+                return@withContext primaryResult
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Circuit 1 (Primary API) failed: ${e.message}. Failing over to Circuit 2 (CDN Fallback)...")
+        }
+
+        // Circuit 2: Secondary CDN Fallback
+        Log.i(TAG, "Engaging Circuit 2 (CDN Fallback) across ${fallbackCdnUrls.size} mirrors...")
+        executeCdnFallback()
+    }
+
+    private suspend fun executePrimarySync(): SyncResult? {
+        val lastVersion = db.syncMetadataDao().getValueLong(KEY_LAST_DELTA_VERSION) ?: 0L
+        Log.d(TAG, "Primary Sync: Requesting deltas since version $lastVersion")
+
+        val response = api.getPoolsDelta(since = lastVersion)
+
+        // HTTP 304: Client is already up to date
+        if (response.code() == 304) {
+            Log.i(TAG, "Primary Sync HTTP 304 Not Modified (v$lastVersion). 0 bytes transferred.")
+            return SyncResult.NotModified
+        }
+
+        if (!response.isSuccessful || response.body() == null) {
+            throw IOException("Primary API returned HTTP ${response.code()}: ${response.message()}")
+        }
+
+        val delta = response.body()!!
+        val now = System.currentTimeMillis()
+
+        db.withTransaction {
+            if (delta.fullSyncRequired) {
+                Log.i(TAG, "Primary Sync: Full sync requested. Resetting pools.")
+                db.blockedPoolDao().clearAll()
+            } else {
+                for (item in delta.removed) {
+                    db.blockedPoolDao().deleteRange(item.rangeStart, item.rangeEnd)
+                }
+            }
+
+            val entities = delta.added.map {
+                BlockedPoolEntity(
+                    rangeStart = it.rangeStart,
+                    rangeEnd = it.rangeEnd,
+                    operator = it.operator,
+                    category = it.category,
+                    updatedAt = now
+                )
+            }
+            db.blockedPoolDao().insertAll(entities)
+
+            db.syncMetadataDao().setValueLong(KEY_LAST_DELTA_VERSION, delta.currentVersion)
+            db.syncMetadataDao().setValueLong(KEY_LAST_SYNC_TIMESTAMP, now)
+            db.syncMetadataDao().setValueStr(KEY_LAST_SYNC_SOURCE, SyncSource.PRIMARY_API.name)
+        }
+
+        Log.i(TAG, "Primary Sync successful: version ${delta.currentVersion}, +${delta.added.size}, -${delta.removed.size}")
+        return SyncResult.Success(
+            source = SyncSource.PRIMARY_API,
+            currentVersion = delta.currentVersion,
+            addedCount = delta.added.size,
+            removedCount = delta.removed.size
+        )
+    }
+
+    private suspend fun executeCdnFallback(): SyncResult {
+        var lastException: Throwable? = null
+
+        for (url in fallbackCdnUrls) {
+            try {
+                Log.d(TAG, "Attempting CDN fallback fetch from: $url")
+                val request = Request.Builder()
+                    .url(url)
+                    .header("User-Agent", "AntiSpam-Android-Client")
+                    .build()
+
+                httpClient.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        throw IOException("CDN mirror $url returned HTTP ${response.code}")
+                    }
+
+                    val bodyBytes = response.body?.bytes()
+                        ?: throw IOException("Empty body received from CDN mirror $url")
+
+                    val parsed = parseAspbPayload(bodyBytes)
+                    val now = System.currentTimeMillis()
+
+                    db.withTransaction {
+                        db.blockedPoolDao().clearAll()
+                        db.blockedPoolDao().insertAll(parsed.added)
+
+                        db.syncMetadataDao().setValueLong(KEY_LAST_DELTA_VERSION, parsed.currentVersion)
+                        db.syncMetadataDao().setValueLong(KEY_LAST_SYNC_TIMESTAMP, now)
+                        db.syncMetadataDao().setValueStr(KEY_LAST_SYNC_SOURCE, SyncSource.CDN_FALLBACK.name)
+                    }
+
+                    Log.i(TAG, "CDN Fallback successful via $url! Loaded ${parsed.added.size} pools (v${parsed.currentVersion})")
+                    return SyncResult.Success(
+                        source = SyncSource.CDN_FALLBACK,
+                        currentVersion = parsed.currentVersion,
+                        addedCount = parsed.added.size,
+                        removedCount = parsed.removed.size
+                    )
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "CDN mirror $url failed: ${e.message}")
+                lastException = e
+            }
+        }
+
+        Log.e(TAG, "All primary and CDN fallback channels exhausted.")
+        return SyncResult.Failure(
+            message = "All sync channels failed. Primary API and CDN fallback mirrors unreachable.",
+            lastError = lastException
+        )
+    }
+
+    suspend fun flushPendingReports(deviceHash: String) {
+        val pending = db.pendingReportDao().getPending(limit = 50)
+        if (pending.isEmpty()) return
+
+        Log.d(TAG, "Flushing ${pending.size} pending reports...")
+        val batchPayload = BatchReportRequestDto(
+            deviceHash = deviceHash,
+            reports = pending.map {
+                BatchReportItemDto(
+                    phoneNumber = it.phoneNumber.toString(),
+                    category = it.category,
+                    callDurationSeconds = it.callDurationSeconds
+                )
+            }
+        )
+
+        api.submitBatchReports(batchPayload)
+        db.pendingReportDao().deleteByIds(pending.map { it.id })
+    }
+}

@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Essential permissions for AntiSpam & Call Screening -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.READ_CALL_LOG" />
+    <uses-permission android:name="android.permission.WRITE_CALL_LOG" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!-- Phase 5: Call Privacy Shield & Mic Guard permissions -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+
+    <application
+        android:name=".AntiSpamApplication"
+        android:allowBackup="true"
+        android:icon="@android:drawable/sym_def_app_icon"
+        android:label="AntiSpam"
+        android:supportsRtl="true"
+        android:allowAudioPlaybackCapture="false"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:theme="@android:style/Theme.Material.NoActionBar">
+
+        <!-- Main UI Activity -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- CallScreeningService: Core interceptor for incoming calls (< 15ms) -->
+        <service
+            android:name=".service.AntiSpamCallScreeningService"
+            android:permission="android.permission.BIND_SCREENING_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.telecom.CallScreeningService" />
+            </intent-filter>
+        </service>
+
+        <!-- Phase 5: MicGuardService for Call Privacy Shield (Foreground Service for audio inspection) -->
+        <service
+            android:name=".privacy.MicGuardService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
+        <!-- Phase 6.5: Quick Settings Tile for Delivery Mode ("Жду курьера") -->
+        <service
+            android:name=".service.DeliveryTileService"
+            android:icon="@android:drawable/ic_dialog_info"
+            android:label="Жду курьера"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <!-- Phase 6.5: Action Receiver for Ongoing Delivery Notification -->
+        <receiver
+            android:name=".service.DeliveryActionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="ru.antispam.app.action.STOP_DELIVERY_MODE" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Post-Call PhoneState Receiver (detects calls < 30 seconds) -->
+        <receiver
+            android:name=".postcall.PhoneStateReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.PHONE_STATE" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Post-Call Notification Action Receiver -->
+        <receiver
+            android:name=".postcall.PostCallActionReceiver"
+            android:exported="false" />
+
+        <!-- Boot Completed Receiver: Pre-warms database and reschedules periodic sync -->
+        <receiver
+            android:name=".receiver.BootCompletedReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+
+    </application>
+</manifest>

@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: antispam-backend:latest
+    container_name: antispam-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - ANTISPAM_ADMIN_API_KEY=${ANTISPAM_ADMIN_API_KEY:-antispam-admin-secret-key-change-in-prod}
+      - ANTISPAM_TRUSTED_SEEDS=${ANTISPAM_TRUSTED_SEEDS:-}
+    volumes:
+      - antispam_data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  antispam_data:
+    name: antispam_data
+    driver: local

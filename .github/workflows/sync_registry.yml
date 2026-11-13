@@ -1,0 +1,83 @@
+name: Weekly Mincifry Registry & ASPB Pools Sync
+
+'on':
+  schedule:
+    # Every Monday at 03:00 UTC (06:00 MSK)
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+    inputs:
+      force_download:
+        description: 'Force re-download all Mincifry CSV registries'
+        required: false
+        default: true
+        type: boolean
+      include_vciom:
+        description: 'Include official VCIOM interviewer phone pools'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  sync-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Registry Synchronization Pipeline
+        run: |
+          mkdir -p data
+          python -m backend.cli sync --force --include-vciom
+
+      - name: Compile and Export Binary ASPB Snapshot
+        run: |
+          python -m backend.cli export-aspb --output data/pools.aspb
+
+      - name: Verify Binary ASPB Snapshot Integrity
+        run: |
+          python -c "
+          from backend.aspb import parse_aspb_payload
+          with open('data/pools.aspb', 'rb') as f:
+              data = f.read()
+          res = parse_aspb_payload(data)
+          print(f'Integrity PASS: {len(res[\"added\"])} pools, v{res[\"current_version\"]}, size {len(data)} bytes')
+          "
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: antispam-pools-data
+          path: |
+            data/pools.aspb
+            data/antispam_registry.db
+          retention-days: 30
+
+      - name: Publish to GitHub Release (latest-data)
+        uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        with:
+          tag_name: latest-data
+          name: 'Latest AntiSpam Numbering Plan & Pools'
+          body: |
+            Automated weekly build of Russian Numbering Plan (Mincifry ABC/DEF/800) and ASPB Binary Pools.
+            - Generated on: ${{ github.event.head_commit.timestamp || github.event.schedule }}
+            - Protocol: ASPB v1
+          files: |
+            data/pools.aspb
+            data/antispam_registry.db
+          prerelease: false
+          make_latest: false

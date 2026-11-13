@@ -1,0 +1,1 @@
+"""AntiSpam REST API package"""

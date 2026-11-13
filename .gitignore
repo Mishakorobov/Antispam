@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local databases and runtime data
+*.db
+*.sqlite
+data/downloads/
+data/*.bin
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Android / Gradle
+.gradle/
+build/
+android/.gradle/
+android/build/
+android/app/build/
+*.apk
+*.aab
+local.properties
+.idea/
+*.iml
+.cxx/
+captures/
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+*.swp
+*.bak
+.vscode/

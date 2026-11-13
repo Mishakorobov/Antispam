@@ -1,0 +1,21 @@
+# Caddyfile for AntiSpam Backend
+# Caddy automatically provisions and renews TLS certificates via Let's Encrypt / ZeroSSL
+
+api.antispam.yourdomain.com {
+    # Forward all traffic to the single-worker AntiSpam container
+    reverse_proxy 127.0.0.1:8000 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    # Compress JSON and ASPB responses
+    encode zstd gzip
+
+    # Logging in structured JSON
+    log {
+        output file /var/log/caddy/antispam_access.log
+        format json
+    }
+}
