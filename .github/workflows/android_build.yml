@@ -40,13 +40,16 @@ jobs:
           cd android
           ./gradlew testDebugUnitTest --no-daemon
 
-      - name: Decode Release Keystore (if secret configured)
+      - name: Prepare Release Keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
           if [ -n "$KEYSTORE_BASE64" ]; then
             echo "Decoding production keystore from secrets..."
             echo "$KEYSTORE_BASE64" | base64 -d > android/antispam-release.jks
+          elif [ ! -f "android/antispam-release.jks" ]; then
+            echo "Generating release keystore on runner..."
+            keytool -genkeypair -v -keystore android/antispam-release.jks -alias antispam -keyalg RSA -keysize 2048 -validity 10000 -storepass antispam2026secure -keypass antispam2026secure -dname "CN=AntiSpam, OU=Security, O=AntiSpam, L=Moscow, ST=Moscow, C=RU"
           fi
 
       - name: Build APK
