@@ -31,14 +31,37 @@ def download_file(url: str, target_filename: str, force: bool = False) -> Path:
     headers = {"User-Agent": settings.user_agent}
 
     # Use custom transport / client with ssl_verify=False for opendata.digital.gov.ru
-    with httpx.Client(verify=settings.ssl_verify, timeout=settings.download_timeout_seconds, headers=headers) as client:
-        with client.stream("GET", url, follow_redirects=True) as response:
-            response.raise_for_status()
-            temp_path = target_path.with_suffix(".tmp")
-            with open(temp_path, "wb") as f:
-                for chunk in response.iter_bytes(chunk_size=65536):
-                    f.write(chunk)
-            temp_path.replace(target_path)
+    try:
+        with httpx.Client(verify=settings.ssl_verify, timeout=settings.download_timeout_seconds, headers=headers) as client:
+            with client.stream("GET", url, follow_redirects=True) as response:
+                response.raise_for_status()
+                temp_path = target_path.with_suffix(".tmp")
+                with open(temp_path, "wb") as f:
+                    for chunk in response.iter_bytes(chunk_size=65536):
+                        f.write(chunk)
+                temp_path.replace(target_path)
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 403:
+            logger.warning(f"Mincifry portal returned 403 Forbidden (foreign runner Geo-IP block).")
+            if target_path.exists():
+                logger.info(f"Falling back to existing cached registry file: {target_path}")
+                return target_path
+            mirror_url = f"https://github.com/Mishakorobov/Antispam/releases/download/latest-data/{target_filename}"
+            logger.info(f"Attempting fallback mirror download: {mirror_url}")
+            try:
+                with httpx.Client(timeout=30.0, headers={"User-Agent": "AntiSpam-Fallback/1.0"}) as mirror_client:
+                    with mirror_client.stream("GET", mirror_url, follow_redirects=True) as m_resp:
+                        m_resp.raise_for_status()
+                        temp_path = target_path.with_suffix(".tmp")
+                        with open(temp_path, "wb") as f:
+                            for chunk in m_resp.iter_bytes(chunk_size=65536):
+                                f.write(chunk)
+                        temp_path.replace(target_path)
+                        return target_path
+            except Exception as mirror_err:
+                logger.error(f"Fallback mirror failed: {mirror_err}")
+                raise e
+        raise e
 
     logger.info(f"Successfully downloaded {target_filename} ({target_path.stat().st_size} bytes)")
     return target_path
