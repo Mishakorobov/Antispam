@@ -125,13 +125,13 @@ def test_github_workflows_yaml_syntax():
     with open(sync_wf, "r", encoding="utf-8") as f:
         sync_data = yaml.safe_load(f)
     assert "name" in sync_data
-    assert "on" in sync_data
     assert "jobs" in sync_data
-    assert "schedule" in sync_data["on"]
+    sync_on = sync_data.get("on") or sync_data.get(True)
+    assert "schedule" in sync_on
 
     with open(build_wf, "r", encoding="utf-8") as f:
         build_data = yaml.safe_load(f)
     assert "name" in build_data
-    assert "on" in build_data
     assert "jobs" in build_data
-    assert "push" in build_data["on"]
+    build_on = build_data.get("on") or build_data.get(True)
+    assert "push" in build_on

@@ -1,6 +1,6 @@
 name: Weekly Mincifry Registry & ASPB Pools Sync
 
-'on':
+on:
   schedule:
     # Every Monday at 03:00 UTC (06:00 MSK)
     - cron: '0 3 * * 1'
