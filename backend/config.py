@@ -52,4 +52,8 @@ class Settings(BaseModel):
     # Validation constraints
     min_expected_records: int = 400_000
 
+    # GitHub Mirror Fallback Configuration
+    github_repository: str = os.getenv("GITHUB_REPOSITORY", "Mishakorobov/Antispam")
+    github_token: str = os.getenv("GITHUB_TOKEN", "") or os.getenv("GH_TOKEN", "")
+
 settings = Settings()

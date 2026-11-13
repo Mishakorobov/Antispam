@@ -39,6 +39,8 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run Registry Synchronization Pipeline
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p data
           python -m backend.cli sync --force --include-vciom
@@ -56,6 +58,14 @@ jobs:
           res = parse_aspb_payload(data)
           print(f'Integrity PASS: {len(res[\"added\"])} pools, v{res[\"current_version\"]}, size {len(data)} bytes')
           "
+
+      - name: Compress CSV registries for mirror preservation
+        run: |
+          for f in data/downloads/*.csv; do
+            if [ -f "$f" ]; then
+              gzip -c "$f" > "$f.gz"
+            fi
+          done
 
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
@@ -79,5 +89,6 @@ jobs:
           files: |
             data/pools.aspb
             data/antispam_registry.db
+            data/downloads/*.csv.gz
           prerelease: false
           make_latest: false
