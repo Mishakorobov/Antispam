@@ -28,6 +28,9 @@ android/build/
 android/app/build/
 *.apk
 *.aab
+*.jks
+*.keystore
+*.base64.txt
 local.properties
 .idea/
 *.iml

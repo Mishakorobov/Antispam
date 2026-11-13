@@ -60,9 +60,8 @@ class SyncRepository(
         const val KEY_LAST_SYNC_SOURCE = "last_sync_source"
 
         val DEFAULT_CDN_URLS = listOf(
-            "https://cdn.jsdelivr.net/gh/antispam-project/antispam@latest-data/data/pools.aspb",
-            "https://raw.githubusercontent.com/antispam-project/antispam/latest-data/data/pools.aspb",
-            "https://github.com/antispam-project/antispam/releases/download/latest-data/pools.aspb"
+            "https://github.com/Mishakorobov/Antispam/releases/download/latest-data/pools.aspb",
+            "https://raw.githubusercontent.com/Mishakorobov/Antispam/main/data/pools.aspb"
         )
 
         /**
@@ -149,17 +148,24 @@ class SyncRepository(
 
     /**
      * Executes Dual-Circuit synchronization:
-     * Circuit 1 (Primary): Fast incremental delta sync via REST API.
-     * Circuit 2 (Secondary Fallback): High-availability binary ASPB download via Global CDN.
+     * Circuit 1 (Primary): Fast incremental delta sync via REST API (when server is deployed).
+     * Circuit 2 (Autonomous / Fallback): High-availability binary ASPB download via GitHub Releases Global CDN.
      */
     suspend fun synchronize(deviceHash: String? = null): SyncResult = withContext(Dispatchers.IO) {
-        // Step 0: Flush offline reports if device hash provided
-        if (deviceHash != null) {
+        // Step 0: Flush offline reports if custom backend server is active
+        if (deviceHash != null && !NetworkModule.isServerlessMode) {
             try {
                 flushPendingReports(deviceHash)
             } catch (e: Exception) {
                 Log.w(TAG, "Non-critical: Failed to flush offline reports before sync: ${e.message}")
             }
+        }
+
+        // Autonomous CDN Mode: Immediately fetch binary ASPB snapshot from GitHub Releases CDN
+        // without waiting for primary server connection timeouts
+        if (NetworkModule.isServerlessMode) {
+            Log.i(TAG, "Autonomous CDN Mode active: Synchronizing directly via GitHub Releases Global CDN...")
+            return@withContext executeCdnFallback()
         }
 
         // Circuit 1: Primary API
@@ -252,6 +258,12 @@ class SyncRepository(
 
                     val parsed = parseAspbPayload(bodyBytes)
                     val now = System.currentTimeMillis()
+
+                    val lastVersion = db.syncMetadataDao().getValueLong(KEY_LAST_DELTA_VERSION) ?: 0L
+                    if (parsed.currentVersion <= lastVersion && lastVersion > 0L && db.blockedPoolDao().getCount() > 0) {
+                        Log.i(TAG, "CDN snapshot v${parsed.currentVersion} already applied (local is v$lastVersion). Up-to-date.")
+                        return SyncResult.NotModified
+                    }
 
                     db.withTransaction {
                         db.blockedPoolDao().clearAll()

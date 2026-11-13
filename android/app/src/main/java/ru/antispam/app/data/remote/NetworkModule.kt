@@ -10,6 +10,14 @@ import java.util.concurrent.TimeUnit
 
 object NetworkModule {
 
+    /**
+     * Serverless Autonomous CDN Mode:
+     * When true (default), the app operates fully autonomously without requiring a dedicated
+     * self-hosted REST API backend. Numbering plan updates are fetched directly over HTTPS from
+     * GitHub Releases Global CDN (https://github.com/Mishakorobov/Antispam/releases/download/latest-data/pools.aspb).
+     */
+    var isServerlessMode: Boolean = true
+
     // 10.0.2.2 is Android Emulator's default alias for host machine localhost
     private const val DEFAULT_BASE_URL = "http://10.0.2.2:8000/"
 
