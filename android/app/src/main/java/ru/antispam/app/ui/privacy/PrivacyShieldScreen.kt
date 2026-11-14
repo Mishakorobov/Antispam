@@ -28,6 +28,7 @@ import androidx.compose.material.icons.rounded.Fingerprint
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.NightsStay
+import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Security
@@ -64,6 +65,8 @@ import ru.antispam.app.data.local.entity.VaultCallRecordEntity
 import ru.antispam.app.privacy.AppPrivacyRisk
 import ru.antispam.app.privacy.PrivacyCategory
 import ru.antispam.app.privacy.PrivacyRiskLevel
+import ru.antispam.app.privacy.model.ListenerRiskLevel
+import ru.antispam.app.privacy.model.NotificationListenerApp
 import ru.antispam.app.ui.components.AppleGroupedCard
 import ru.antispam.app.ui.components.AppleHairlineDivider
 import ru.antispam.app.ui.theme.AppleBlue
@@ -524,6 +527,18 @@ fun PrivacyShieldScreen(
             }
         }
 
+        // Phase 8.1: Notification Listener Spy Auditor (SMS & 2FA Protection)
+        item {
+            NotificationListenerAuditCard(
+                listeners = state.notificationListeners,
+                highRiskCount = state.highRiskListenersCount,
+                onOpenSettings = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    viewModel.openNotificationListenerSettings()
+                }
+            )
+        }
+
         // 4. Call Log Vault (Incognito Mode) with Biometric Lock
         item {
             AppleGroupedCard {
@@ -954,6 +969,164 @@ private fun VaultCallItemRow(call: VaultCallRecordEntity) {
                 .padding(horizontal = 6.dp, vertical = 3.dp)
         ) {
             Text(text = "Vault", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = ApplePurple)
+        }
+    }
+}
+
+@Composable
+private fun NotificationListenerAuditCard(
+    listeners: List<NotificationListenerApp>,
+    highRiskCount: Int,
+    onOpenSettings: () -> Unit
+) {
+    AppleGroupedCard {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (highRiskCount > 0) AppleRed.copy(alpha = 0.15f)
+                            else AppleMintGreen.copy(alpha = 0.15f)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (highRiskCount > 0) Icons.Rounded.Warning else Icons.Rounded.Notifications,
+                        contentDescription = "Notification Listener Icon",
+                        tint = if (highRiskCount > 0) AppleRed else AppleMintGreen,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(14.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Доступ к шторке и 2FA",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = if (highRiskCount > 0) "Обнаружен риск перехвата СМС-кодов!"
+                        else "Аудит доступа к входящим уведомлениям",
+                        fontSize = 13.sp,
+                        color = if (highRiskCount > 0) AppleRed else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            if (highRiskCount > 0) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(AppleRed.copy(alpha = 0.12f))
+                        .padding(12.dp)
+                ) {
+                    Text(
+                        text = "⚠️ Внимание: $highRiskCount сторонних приложений имеют доступ к шторке и могут читать 2FA-коды банков и Госуслуг в обход разрешений СМС!",
+                        fontSize = 12.sp,
+                        color = AppleRed,
+                        lineHeight = 16.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+            } else if (listeners.isEmpty()) {
+                Text(
+                    text = "Шторка чиста: ни одно стороннее приложение не имеет доступа к перехвату уведомлений.",
+                    fontSize = 13.sp,
+                    color = AppleMintGreen
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+            }
+
+            // Display listener apps
+            listeners.take(5).forEach { listener ->
+                val badgeColor = when (listener.riskLevel) {
+                    ListenerRiskLevel.HIGH -> AppleRed
+                    ListenerRiskLevel.MEDIUM -> AppleOrange
+                    ListenerRiskLevel.SAFE -> AppleMintGreen
+                }
+                val badgeText = when (listener.riskLevel) {
+                    ListenerRiskLevel.HIGH -> "ОПАСНО: СМС/2FA"
+                    ListenerRiskLevel.MEDIUM -> "Носимое устройство"
+                    ListenerRiskLevel.SAFE -> "Система"
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = listener.appName,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = listener.riskDescription,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                            lineHeight = 14.sp
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(badgeColor.copy(alpha = 0.15f))
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = badgeText,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = badgeColor
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Button(
+                onClick = onOpenSettings,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (highRiskCount > 0) AppleRed else AppleBlue
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Security,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = if (highRiskCount > 0) "Отозвать доступ в настройках" else "Настройки доступа к уведомлениям",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
         }
     }
 }

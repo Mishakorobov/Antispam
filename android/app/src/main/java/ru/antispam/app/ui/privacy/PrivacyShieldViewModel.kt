@@ -15,11 +15,14 @@ import ru.antispam.app.data.local.entity.VaultCallRecordEntity
 import ru.antispam.app.privacy.AppPrivacyRisk
 import ru.antispam.app.privacy.MicGuardService
 import ru.antispam.app.privacy.MicJammerManager
+import ru.antispam.app.privacy.NotificationListenerAuditor
 import ru.antispam.app.privacy.PrivacyCategory
 import ru.antispam.app.privacy.PrivacyRiskLevel
 import ru.antispam.app.privacy.PrivacyScannerHelper
 import ru.antispam.app.privacy.PrivateCallLogVaultManager
 import ru.antispam.app.privacy.SpeakerphoneMonitor
+import ru.antispam.app.privacy.model.ListenerRiskLevel
+import ru.antispam.app.privacy.model.NotificationListenerApp
 import ru.antispam.app.util.VipModeManager
 
 data class PrivacyShieldUiState(
@@ -44,7 +47,9 @@ data class PrivacyShieldUiState(
     val isBlockForeignPlus7Active: Boolean = false,
     val pendingRevokePkg: String? = null,
     val pendingRevokeAppName: String? = null,
-    val revocationSuccessMessage: String? = null
+    val revocationSuccessMessage: String? = null,
+    val notificationListeners: List<NotificationListenerApp> = emptyList(),
+    val highRiskListenersCount: Int = 0
 )
 
 class PrivacyShieldViewModel(application: Application) : AndroidViewModel(application) {
@@ -111,6 +116,10 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
             val messengers = apps.count { it.category == PrivacyCategory.TRUSTED_MESSENGER }
             val systems = apps.count { it.category == PrivacyCategory.SYSTEM_DIALER }
 
+            // Phase 8.1: Audit apps with active NotificationListener access
+            val listeners = NotificationListenerAuditor.getEnabledNotificationListeners(getApplication())
+            val highRiskListeners = listeners.count { it.riskLevel == ListenerRiskLevel.HIGH }
+
             _uiState.update {
                 it.copy(
                     scannedApps = apps,
@@ -119,10 +128,16 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
                     highAppsCount = highCount,
                     superappsCount = superapps,
                     messengersCount = messengers,
-                    systemAppsCount = systems
+                    systemAppsCount = systems,
+                    notificationListeners = listeners,
+                    highRiskListenersCount = highRiskListeners
                 )
             }
         }
+    }
+
+    fun openNotificationListenerSettings() {
+        NotificationListenerAuditor.openNotificationListenerSettings(getApplication())
     }
 
     fun toggleMicGuard(enabled: Boolean) {
