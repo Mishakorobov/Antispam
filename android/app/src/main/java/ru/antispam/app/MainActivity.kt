@@ -2,6 +2,7 @@ package ru.antispam.app
 
 import android.app.role.RoleManager
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -79,6 +80,9 @@ class MainActivity : ComponentActivity() {
         // Phase 7.1: Enforce FLAG_SECURE on Activity window to block screen-scraping & screenshots
         AntiTamperHelper.enforceSecureWindow(this)
 
+        // Phase 13.3: Handle incoming P2P .aspb file opened via Quick Share / File Manager
+        handleIncomingAspbIntent(intent)
+
         setContent {
             AntiSpamTheme {
                 MainAppScaffold(
@@ -103,6 +107,18 @@ class MainActivity : ComponentActivity() {
         if (roleManager.isRoleAvailable(RoleManager.ROLE_CALL_SCREENING)) {
             val intent = roleManager.createRequestRoleIntent(RoleManager.ROLE_CALL_SCREENING)
             roleRequestLauncher.launch(intent)
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIncomingAspbIntent(intent)
+    }
+
+    private fun handleIncomingAspbIntent(intent: Intent?) {
+        if (intent?.action == Intent.ACTION_VIEW && intent.data != null) {
+            settingsViewModel.importDatabaseFromUri(intent.data!!)
         }
     }
 }

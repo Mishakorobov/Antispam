@@ -90,7 +90,7 @@ class SyncPoolsWorker(
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val db = AppDatabase.getInstance(applicationContext)
         val deviceHash = getOrCreateDeviceHash(applicationContext)
-        val repository = SyncRepository(db)
+        val repository = SyncRepository(db, context = applicationContext)
 
         when (val result = repository.synchronize(deviceHash)) {
             is SyncResult.Success -> {

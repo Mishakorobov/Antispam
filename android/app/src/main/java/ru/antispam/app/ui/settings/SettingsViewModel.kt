@@ -16,6 +16,10 @@ import ru.antispam.app.data.local.AppDatabase
 import ru.antispam.app.privacy.FamilyLockManager
 import ru.antispam.app.privacy.ProtectionPresetManager
 import ru.antispam.app.privacy.model.ProtectionPreset
+import android.content.Intent
+import android.net.Uri
+import ru.antispam.app.util.ImportResult
+import ru.antispam.app.util.OfflineShareHelper
 import ru.antispam.app.util.OemOnboardingHelper
 import ru.antispam.app.util.OemVendor
 import ru.antispam.app.worker.SyncPoolsWorker
@@ -34,7 +38,9 @@ data class SettingsUiState(
     val isBatteryOptimizationIgnored: Boolean = true,
     val showOemBanner: Boolean = false,
     val isFamilyLockEnabled: Boolean = false,
-    val isDeviceSecure: Boolean = false
+    val isDeviceSecure: Boolean = false,
+    val p2pMessage: String? = null,
+    val isP2pSuccess: Boolean = false
 )
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
@@ -130,5 +136,74 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             kotlinx.coroutines.delay(2000)
             loadSettings()
         }
+    }
+
+    /**
+     * Phase 13.3: Prepares an Intent to export the local verified .aspb snapshot via Quick Share, Bluetooth, etc.
+     */
+    fun prepareOfflineShareIntent(): Intent? {
+        return OfflineShareHelper.prepareExportIntent(getApplication())
+    }
+
+    /**
+     * Phase 13.3: Imports an offline .aspb snapshot from a chosen File/Content URI with zero-trust Ed25519 verification.
+     */
+    fun importDatabaseFromUri(uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _uiState.update { it.copy(isSyncing = true, p2pMessage = "Проверка подписи Ed25519 и импорт...") }
+            val result = OfflineShareHelper.importFromUri(getApplication(), uri, db)
+            when (result) {
+                is ImportResult.Success -> {
+                    _uiState.update {
+                        it.copy(
+                            isSyncing = false,
+                            isP2pSuccess = true,
+                            p2pMessage = "Успешно импортировано ${result.addedCount} пулов (v${result.version})${if (result.dynamicConfigApplied) " с динамическими флагами" else ""}!"
+                        )
+                    }
+                    loadSettings()
+                }
+                is ImportResult.AlreadyUpToDate -> {
+                    _uiState.update {
+                        it.copy(
+                            isSyncing = false,
+                            isP2pSuccess = true,
+                            p2pMessage = "База уже актуальна (v${result.version}). Обновление не требуется."
+                        )
+                    }
+                }
+                is ImportResult.RollbackError -> {
+                    _uiState.update {
+                        it.copy(
+                            isSyncing = false,
+                            isP2pSuccess = false,
+                            p2pMessage = "Отказ: обнаружена попытка отката версии базы (входящая: v${result.incomingVersion}, установлена: v${result.currentVersion})."
+                        )
+                    }
+                }
+                is ImportResult.SecurityError -> {
+                    _uiState.update {
+                        it.copy(
+                            isSyncing = false,
+                            isP2pSuccess = false,
+                            p2pMessage = "Ошибка безопасности: ${result.reason}"
+                        )
+                    }
+                }
+                is ImportResult.Error -> {
+                    _uiState.update {
+                        it.copy(
+                            isSyncing = false,
+                            isP2pSuccess = false,
+                            p2pMessage = "Сбой импорта: ${result.message}"
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    fun clearP2pMessage() {
+        _uiState.update { it.copy(p2pMessage = null) }
     }
 }

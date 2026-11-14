@@ -24,10 +24,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Security
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -67,6 +70,7 @@ import ru.antispam.app.ui.settings.components.OemBatteryOptimizationBanner
 import ru.antispam.app.ui.theme.AppleBlue
 import ru.antispam.app.ui.theme.AppleMintGreen
 import ru.antispam.app.ui.theme.AppleOrange
+import ru.antispam.app.ui.theme.AppleRed
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -91,6 +95,12 @@ fun SettingsScreen(
             pendingAction = null
             Toast.makeText(context, "Подтверждение отклонено: настройки защищены", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    val openDocumentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let { viewModel.importDatabaseFromUri(it) }
     }
 
     val requestAuthAction: (String, () -> Unit) -> Unit = { title, action ->
@@ -488,6 +498,101 @@ fun SettingsScreen(
                             Icon(Icons.Rounded.Refresh, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("Обновить базу сейчас", color = Color.White, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+                    AppleHairlineDivider()
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Text(
+                        text = "ОФЛАЙН P2P-ОБМЕН БАЗОЙ (ZERO-TRUST)",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    val p2pMsg = state.p2pMessage
+                    if (p2pMsg != null) {
+                        val bannerBg = if (state.isP2pSuccess) AppleMintGreen.copy(alpha = 0.12f) else AppleRed.copy(alpha = 0.12f)
+                        val bannerColor = if (state.isP2pSuccess) AppleMintGreen else AppleRed
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(bannerBg)
+                                .padding(12.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = p2pMsg,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = bannerColor,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Icon(
+                                    imageVector = Icons.Rounded.Close,
+                                    contentDescription = "Dismiss",
+                                    tint = bannerColor,
+                                    modifier = Modifier
+                                        .size(18.dp)
+                                        .clickable { viewModel.clearP2pMessage() }
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(10.dp))
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                val shareIntent = viewModel.prepareOfflineShareIntent()
+                                if (shareIntent != null) {
+                                    context.startActivity(shareIntent)
+                                } else {
+                                    Toast.makeText(
+                                        context,
+                                        "Файл базы еще не сформирован. Нажмите «Обновить базу сейчас» для первоначальной загрузки.",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                contentColor = MaterialTheme.colorScheme.onSurface
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(1f).height(42.dp)
+                        ) {
+                            Icon(Icons.Rounded.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Поделиться", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        }
+
+                        Button(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                openDocumentLauncher.launch(arrayOf("*/*"))
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                contentColor = MaterialTheme.colorScheme.onSurface
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(1f).height(42.dp)
+                        ) {
+                            Icon(Icons.Rounded.FileDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Импорт файла", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
                     Spacer(modifier = Modifier.height(6.dp))

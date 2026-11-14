@@ -44,6 +44,16 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Phase 13.3: Direct import of .aspb snapshots via Quick Share / File Manager -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="*/*" />
+                <data android:pathPattern=".*\\.aspb" />
+            </intent-filter>
         </activity>
 
         <!-- CallScreeningService: Core interceptor for incoming calls (< 15ms) -->
@@ -130,6 +140,17 @@
         <receiver
             android:name=".service.WearableBunkerReceiver"
             android:exported="false" />
+
+        <!-- Phase 13.3: Secure FileProvider for Zero-Trust offline P2P .aspb sharing -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
     </application>
 </manifest>

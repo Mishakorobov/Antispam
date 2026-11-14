@@ -1,5 +1,6 @@
 package ru.antispam.app.data.repository
 
+import android.content.Context
 import android.util.Log
 import androidx.room.withTransaction
 import kotlinx.coroutines.Dispatchers
@@ -58,7 +59,8 @@ class SyncRepository(
     private val db: AppDatabase,
     private val api: AntiSpamApiService = NetworkModule.apiService,
     private val httpClient: OkHttpClient = NetworkModule.cdnHttpClient,
-    private val fallbackCdnUrls: List<String> = DEFAULT_CDN_URLS
+    private val fallbackCdnUrls: List<String> = DEFAULT_CDN_URLS,
+    private val context: Context? = null
 ) {
 
     companion object {
@@ -366,6 +368,15 @@ class SyncRepository(
                         db.syncMetadataDao().setValueStr(KEY_LAST_SYNC_SOURCE, SyncSource.CDN_FALLBACK.name)
                         db.syncMetadataDao().setValueStr(KEY_PREFERRED_CDN_MIRROR, url)
                         db.syncMetadataDao().setValueStr(KEY_LAST_USED_CDN_MIRROR, url)
+                    }
+
+                    // Phase 13.3: Cache verified snapshot for offline P2P sharing
+                    context?.let { ctx ->
+                        try {
+                            ru.antispam.app.util.OfflineShareHelper.saveVerifiedSnapshot(ctx, bodyBytes)
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed to cache snapshot for P2P sharing: ${e.message}")
+                        }
                     }
 
                     Log.i(TAG, "CDN Fallback successful via $url! Loaded ${parsed.added.size} pools (v${parsed.currentVersion})")
