@@ -37,6 +37,8 @@ object ClipboardGuardManager {
     const val PREFS_NAME = "antispam_privacy_prefs"
     const val KEY_CLIPBOARD_GUARD_ENABLED = "clipboard_guard_enabled"
     const val KEY_SHREDDED_OTP_COUNT = "shredded_otp_count"
+    const val KEY_LINK_SANITIZER_ENABLED = "link_sanitizer_enabled"
+    const val KEY_SANITIZED_LINKS_COUNT = "sanitized_links_count"
     const val DEFAULT_SHRED_DELAY_MS = 30_000L // 30 seconds
 
     private val _isGuarding = MutableStateFlow(false)
@@ -47,6 +49,12 @@ object ClipboardGuardManager {
 
     private val _shreddedOtpCount = MutableStateFlow(0)
     val shreddedOtpCount: StateFlow<Int> = _shreddedOtpCount.asStateFlow()
+
+    private val _sanitizedLinksCount = MutableStateFlow(0)
+    val sanitizedLinksCount: StateFlow<Int> = _sanitizedLinksCount.asStateFlow()
+
+    private val _phishingLinkAlert = MutableStateFlow<String?>(null)
+    val phishingLinkAlert: StateFlow<String?> = _phishingLinkAlert.asStateFlow()
 
     internal var sharedPreferencesProvider: ((Context) -> SharedPreferences)? = null
 
@@ -83,6 +91,58 @@ object ClipboardGuardManager {
         getPrefs(context).edit().putInt(KEY_SHREDDED_OTP_COUNT, 0).apply()
         _shreddedOtpCount.value = 0
     }
+
+    /**
+     * Phase 12.4: Checks if link sanitizing in clipboard is enabled.
+     */
+    fun isLinkSanitizerEnabled(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_LINK_SANITIZER_ENABLED, true)
+    }
+
+    /**
+     * Phase 12.4: Sets link sanitizing state in preferences.
+     */
+    fun setLinkSanitizerEnabled(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_LINK_SANITIZER_ENABLED, enabled).apply()
+    }
+
+    /**
+     * Phase 12.4: Retrieves total count of tracking-sanitized links.
+     */
+    fun getSanitizedLinksCount(context: Context): Int {
+        val count = getPrefs(context).getInt(KEY_SANITIZED_LINKS_COUNT, 0)
+        _sanitizedLinksCount.value = count
+        return count
+    }
+
+    /**
+     * Phase 12.4: Increments sanitized links counter.
+     */
+    fun incrementSanitizedLinksCount(context: Context): Int {
+        val prefs = getPrefs(context)
+        val current = prefs.getInt(KEY_SANITIZED_LINKS_COUNT, 0)
+        val next = current + 1
+        prefs.edit().putInt(KEY_SANITIZED_LINKS_COUNT, next).apply()
+        _sanitizedLinksCount.value = next
+        return next
+    }
+
+    /**
+     * Phase 12.4: Resets sanitized links counter.
+     */
+    fun resetSanitizedLinksCount(context: Context) {
+        getPrefs(context).edit().putInt(KEY_SANITIZED_LINKS_COUNT, 0).apply()
+        _sanitizedLinksCount.value = 0
+    }
+
+    /**
+     * Phase 12.4: Clears active phishing warning banner.
+     */
+    fun clearPhishingAlert() {
+        _phishingLinkAlert.value = null
+    }
+
+    private var lastSanitizedClip: String? = null
 
     private var clipListener: ClipboardManager.OnPrimaryClipChangedListener? = null
     internal var activeShredJob: Job? = null
@@ -158,6 +218,45 @@ object ClipboardGuardManager {
     }
 
     /**
+     * Inspects a clip for OTPs or trackable URLs and processes it accordingly.
+     * Returns true if either OTP shred or URL sanitization was triggered.
+     */
+    fun processClipText(
+        context: Context,
+        text: String?,
+        onShredOtp: (() -> Unit)? = null,
+        onSanitizeLink: ((String) -> Unit)? = null
+    ): Boolean {
+        if (text.isNullOrBlank()) return false
+        if (text == lastSanitizedClip) return false
+
+        // 1. 2FA OTP Shredding
+        if (isOtpOrSecret(text)) {
+            inspectAndScheduleShred(text) {
+                onShredOtp?.invoke()
+            }
+            return true
+        }
+
+        // 2. Link Sanitizing & Phishing Detection
+        if (isLinkSanitizerEnabled(context)) {
+            val linkResult = LinkSanitizerHelper.sanitizeText(text)
+            if (linkResult.isPhishingThreat) {
+                _phishingLinkAlert.value = linkResult.phishingReason
+            }
+            if (linkResult.wasSanitized) {
+                lastSanitizedClip = linkResult.sanitizedText
+                incrementSanitizedLinksCount(context)
+                _lastShreddedEvent.value = "🧹 Ссылка очищена от трекеров (${linkResult.removedParams.joinToString()})"
+                onSanitizeLink?.invoke(linkResult.sanitizedText)
+                return true
+            }
+        }
+
+        return false
+    }
+
+    /**
      * Starts clipboard monitoring.
      */
     fun startGuard(context: Context) {
@@ -169,21 +268,31 @@ object ClipboardGuardManager {
                 val clip = clipboard.primaryClip
                 if (clip != null && clip.itemCount > 0) {
                     val text = clip.getItemAt(0).text?.toString()
-                    inspectAndScheduleShred(text) {
-                        Handler(Looper.getMainLooper()).post {
-                            try {
-                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                                    clipboard.clearPrimaryClip()
-                                } else {
-                                    clipboard.setPrimaryClip(ClipData.newPlainText("", ""))
-                                }
-                                // Phase 11.4: Silent increment of shredded OTP counter (no noisy Toast popup)
-                                val count = incrementShreddedOtpCount(context)
-                                Log.i(TAG, "Silent shred completed. Total shredded 2FA OTPs: $count")
-                            } catch (ignored: Exception) {
+                    processClipText(
+                        context = context,
+                        text = text,
+                        onShredOtp = {
+                            Handler(Looper.getMainLooper()).post {
+                                try {
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                                        clipboard.clearPrimaryClip()
+                                    } else {
+                                        clipboard.setPrimaryClip(ClipData.newPlainText("", ""))
+                                    }
+                                    val count = incrementShreddedOtpCount(context)
+                                    Log.i(TAG, "Silent shred completed. Total shredded 2FA OTPs: $count")
+                                } catch (_: Exception) {}
+                            }
+                        },
+                        onSanitizeLink = { sanitizedUrl ->
+                            Handler(Looper.getMainLooper()).post {
+                                try {
+                                    clipboard.setPrimaryClip(ClipData.newPlainText("", sanitizedUrl))
+                                    Log.i(TAG, "Sanitized link written to clipboard: $sanitizedUrl")
+                                } catch (_: Exception) {}
                             }
                         }
-                    }
+                    )
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Error inspecting primary clip: ${e.message}")
@@ -193,7 +302,7 @@ object ClipboardGuardManager {
         clipboard.addPrimaryClipChangedListener(listener)
         clipListener = listener
         _isGuarding.value = true
-        Log.i(TAG, "ClipboardGuard started. 2FA auto-shredder active.")
+        Log.i(TAG, "ClipboardGuard started. 2FA auto-shredder and link sanitizer active.")
     }
 
     /**
@@ -207,6 +316,7 @@ object ClipboardGuardManager {
         }
         activeShredJob?.cancel()
         activeShredJob = null
+        lastSanitizedClip = null
         _isGuarding.value = false
         Log.i(TAG, "ClipboardGuard stopped.")
     }
@@ -216,6 +326,7 @@ object ClipboardGuardManager {
      */
     fun updateStateFromPreferences(context: Context) {
         getShreddedOtpCount(context)
+        getSanitizedLinksCount(context)
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val enabled = prefs.getBoolean(KEY_CLIPBOARD_GUARD_ENABLED, true)
         if (enabled) {

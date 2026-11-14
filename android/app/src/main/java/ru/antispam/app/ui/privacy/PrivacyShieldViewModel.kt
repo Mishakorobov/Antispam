@@ -83,6 +83,9 @@ data class PrivacyShieldUiState(
     val isClipboardGuarding: Boolean = false,
     val clipboardShreddedAlert: String? = null,
     val shreddedOtpCount: Int = 0,
+    val isLinkSanitizerEnabled: Boolean = true,
+    val sanitizedLinksCount: Int = 0,
+    val phishingLinkAlert: String? = null,
     val accessibilityServices: List<AccessibilityServiceApp> = emptyList(),
     val criticalAccessibilityCount: Int = 0,
     val superAppProfiles: List<PackagePrivacyProfile> = emptyList(),
@@ -122,7 +125,9 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
             isVipModeActive = VipModeManager.isVipModeActive(application),
             isBlockForeignPlus7Active = ru.antispam.app.util.KazakhstanBlockManager.isBlockForeignPlus7Active(application),
             isClipboardGuardEnabled = prefs.getBoolean(ClipboardGuardManager.KEY_CLIPBOARD_GUARD_ENABLED, true),
-            shreddedOtpCount = ClipboardGuardManager.getShreddedOtpCount(application)
+            shreddedOtpCount = ClipboardGuardManager.getShreddedOtpCount(application),
+            isLinkSanitizerEnabled = ClipboardGuardManager.isLinkSanitizerEnabled(application),
+            sanitizedLinksCount = ClipboardGuardManager.getSanitizedLinksCount(application)
         )
     )
     val uiState: StateFlow<PrivacyShieldUiState> = _uiState.asStateFlow()
@@ -176,6 +181,17 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
         viewModelScope.launch {
             ClipboardGuardManager.shreddedOtpCount.collect { count ->
                 _uiState.update { it.copy(shreddedOtpCount = count) }
+            }
+        }
+        // Phase 12.4: Observe sanitized links count and phishing alerts
+        viewModelScope.launch {
+            ClipboardGuardManager.sanitizedLinksCount.collect { count ->
+                _uiState.update { it.copy(sanitizedLinksCount = count) }
+            }
+        }
+        viewModelScope.launch {
+            ClipboardGuardManager.phishingLinkAlert.collect { alert ->
+                _uiState.update { it.copy(phishingLinkAlert = alert) }
             }
         }
         refreshScan()
@@ -436,6 +452,30 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
     fun clearClipboardAlert() {
         ClipboardGuardManager.clearAlert()
         _uiState.update { it.copy(clipboardShreddedAlert = null) }
+    }
+
+    /**
+     * Phase 12.4: Toggles automated web link sanitization in clipboard.
+     */
+    fun toggleLinkSanitizer(enabled: Boolean) {
+        ClipboardGuardManager.setLinkSanitizerEnabled(getApplication(), enabled)
+        _uiState.update { it.copy(isLinkSanitizerEnabled = enabled) }
+    }
+
+    /**
+     * Phase 12.4: Dismisses the phishing link threat banner.
+     */
+    fun clearPhishingAlert() {
+        ClipboardGuardManager.clearPhishingAlert()
+        _uiState.update { it.copy(phishingLinkAlert = null) }
+    }
+
+    /**
+     * Phase 12.4: Resets the sanitized links counter.
+     */
+    fun resetSanitizedLinksCounter() {
+        ClipboardGuardManager.resetSanitizedLinksCount(getApplication())
+        _uiState.update { it.copy(sanitizedLinksCount = 0) }
     }
 
     fun toggleCallVault(enabled: Boolean) {

@@ -217,6 +217,52 @@ fun PrivacyShieldScreen(
             }
         }
 
+        // Phase 12.4: Phishing Link Detected in Clipboard Alert Banner
+        if (state.phishingLinkAlert != null) {
+            item {
+                AnimatedVisibility(visible = true, enter = fadeIn(), exit = fadeOut()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(AppleRed.copy(alpha = 0.15f))
+                            .padding(16.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Rounded.Warning,
+                                contentDescription = "Phishing Alert",
+                                tint = AppleRed,
+                                modifier = Modifier.size(26.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Фишинговая ссылка в буфере!",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = AppleRed
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = state.phishingLinkAlert!!,
+                                    fontSize = 13.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                            IconButton(onClick = { viewModel.clearPhishingAlert() }) {
+                                Icon(
+                                    imageVector = Icons.Rounded.CheckCircle,
+                                    contentDescription = "Dismiss",
+                                    tint = AppleRed
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Phase 10.1: Unified Security & Protection Index Ring Widget
         state.securityScoreReport?.let { report ->
             item {
@@ -530,6 +576,87 @@ fun PrivacyShieldScreen(
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = Color.White,
                             checkedTrackColor = AppleMintGreen
+                        )
+                    )
+                }
+
+                AppleHairlineDivider()
+
+                // Phase 12.4: Network Link Sanitizer in Clipboard
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(52.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (state.isLinkSanitizerEnabled) AppleBlue.copy(alpha = 0.15f)
+                                else MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Public,
+                            contentDescription = "Link Sanitizer",
+                            tint = if (state.isLinkSanitizerEnabled) AppleBlue else MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(16.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "Санитайзер ссылок",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            if (state.sanitizedLinksCount > 0) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(AppleBlue.copy(alpha = 0.15f))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "${state.sanitizedLinksCount}",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = AppleBlue
+                                    )
+                                }
+                            }
+                        }
+                        Text(
+                            text = if (state.isLinkSanitizerEnabled) {
+                                if (state.sanitizedLinksCount > 0)
+                                    "Активен: очищено ссылок от слежки: ${state.sanitizedLinksCount}"
+                                else
+                                    "Активен: удаление utm-меток, yclid и проверка фишинга"
+                            } else {
+                                "Очистка ссылок от трекеров слежки отключена"
+                            },
+                            fontSize = 13.sp,
+                            color = if (state.isLinkSanitizerEnabled) AppleBlue else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        )
+                    }
+
+                    Switch(
+                        checked = state.isLinkSanitizerEnabled,
+                        onCheckedChange = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            viewModel.toggleLinkSanitizer(it)
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = AppleBlue
                         )
                     )
                 }
