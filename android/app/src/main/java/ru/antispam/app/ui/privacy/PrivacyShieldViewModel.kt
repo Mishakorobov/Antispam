@@ -35,6 +35,10 @@ import ru.antispam.app.privacy.SuperAppInspector
 import ru.antispam.app.privacy.TrustedAppManager
 import ru.antispam.app.privacy.VpnClientFormat
 import ru.antispam.app.privacy.VpnMaskingHelper
+import ru.antispam.app.privacy.remediation.OneClickRemediationEngine
+import ru.antispam.app.privacy.remediation.RemediationActionType
+import ru.antispam.app.privacy.remediation.RemediationPlan
+import ru.antispam.app.privacy.remediation.RemediationStep
 import ru.antispam.app.privacy.model.AccessibilityRiskLevel
 import ru.antispam.app.privacy.model.AccessibilityServiceApp
 import ru.antispam.app.privacy.model.AdIdPrivacyProfile
@@ -111,7 +115,13 @@ data class PrivacyShieldUiState(
     val adIdProfile: AdIdPrivacyProfile? = null,
     val callForwardingReport: CallForwardingReport = CallForwardingReport(),
     val cellularSecurityReport: CellularSecurityReport = CellularSecurityReport(),
-    val securityScoreReport: SecurityScoreReport? = null
+    val securityScoreReport: SecurityScoreReport? = null,
+    val isRemediationActive: Boolean = false,
+    val remediationPlan: RemediationPlan? = null,
+    val currentRemediationStepIndex: Int = 0,
+    val remediationStatusText: String? = null,
+    val isWizardBottomSheetVisible: Boolean = false,
+    val showRemediationCelebration: Boolean = false
 )
 
 class PrivacyShieldViewModel(application: Application) : AndroidViewModel(application) {
@@ -305,6 +315,141 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
                     securityScoreReport = scoreReport
                 )
             }
+        }
+    }
+
+    /**
+     * Phase 14: Starts unified One-Click Security Remediation.
+     * Executes in-app batch fixes first, then opens the guided wizard if external system steps remain.
+     */
+    fun startOneClickRemediation() {
+        val issues = _uiState.value.securityScoreReport?.issues ?: emptyList()
+        if (issues.isEmpty()) return
+
+        val plan = OneClickRemediationEngine.planRemediation(getApplication(), issues, _uiState.value)
+        _uiState.update {
+            it.copy(
+                remediationPlan = plan,
+                isRemediationActive = true,
+                currentRemediationStepIndex = 0,
+                remediationStatusText = if (plan.automatedSteps.isNotEmpty()) "Устранение внутренних уязвимостей..." else null
+            )
+        }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            if (plan.automatedSteps.isNotEmpty()) {
+                OneClickRemediationEngine.executeBatchAutoFix(
+                    context = getApplication(),
+                    automatedSteps = plan.automatedSteps,
+                    db = db,
+                    onProgress = { title, completed, total ->
+                        _uiState.update {
+                            it.copy(remediationStatusText = "[$completed/$total] $title")
+                        }
+                    }
+                )
+                refreshScan(force = true)
+            }
+
+            if (plan.hasGuidedSteps) {
+                _uiState.update {
+                    it.copy(
+                        isWizardBottomSheetVisible = true,
+                        isRemediationActive = false,
+                        remediationStatusText = null
+                    )
+                }
+            } else {
+                _uiState.update {
+                    it.copy(
+                        isRemediationActive = false,
+                        remediationStatusText = null,
+                        showRemediationCelebration = true
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * Phase 14: Opens the deep link intent for the currently active wizard step.
+     */
+    fun resolveCurrentWizardStep(context: Context) {
+        val plan = _uiState.value.remediationPlan ?: return
+        val step = plan.guidedSteps.getOrNull(_uiState.value.currentRemediationStepIndex) ?: return
+        if (step.intent != null) {
+            try {
+                context.startActivity(step.intent)
+            } catch (e: Exception) {
+                android.util.Log.e("PrivacyShieldVM", "Failed to launch remediation intent: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * Phase 14: Whitelists password manager apps from Accessibility penalties in 1 tap.
+     */
+    fun trustCurrentWizardApp() {
+        val plan = _uiState.value.remediationPlan ?: return
+        val step = plan.guidedSteps.getOrNull(_uiState.value.currentRemediationStepIndex) ?: return
+        val pkg = step.targetPackage
+        if (!pkg.isNullOrBlank()) {
+            when (step.actionType) {
+                RemediationActionType.SYSTEM_MANAGE_ACCESSIBILITY -> {
+                    toggleTrustAccessibilityService(pkg)
+                }
+                RemediationActionType.SYSTEM_REVOKE_NOTIFICATION_LISTENER -> {
+                    toggleTrustNotificationListener(pkg)
+                }
+                else -> {}
+            }
+            advanceWizardStep()
+        }
+    }
+
+    /**
+     * Phase 14: Reactive onResume hook to automatically verify if the user
+     * resolved the targeted system setting while in system settings.
+     */
+    fun onAppResumed() {
+        val plan = _uiState.value.remediationPlan
+        if (_uiState.value.isWizardBottomSheetVisible && plan != null) {
+            val step = plan.guidedSteps.getOrNull(_uiState.value.currentRemediationStepIndex)
+            if (step != null) {
+                val resolved = OneClickRemediationEngine.quickVerifyStep(getApplication(), step)
+                if (resolved) {
+                    advanceWizardStep()
+                }
+            }
+        }
+    }
+
+    private fun advanceWizardStep() {
+        val plan = _uiState.value.remediationPlan ?: return
+        val nextIndex = _uiState.value.currentRemediationStepIndex + 1
+        if (nextIndex < plan.guidedSteps.size) {
+            _uiState.update {
+                it.copy(currentRemediationStepIndex = nextIndex)
+            }
+        } else {
+            _uiState.update {
+                it.copy(
+                    isWizardBottomSheetVisible = false,
+                    showRemediationCelebration = true
+                )
+            }
+            refreshScan(force = true)
+        }
+    }
+
+    fun dismissWizard() {
+        _uiState.update {
+            it.copy(
+                isWizardBottomSheetVisible = false,
+                showRemediationCelebration = false,
+                isRemediationActive = false,
+                remediationPlan = null
+            )
         }
     }
 

@@ -59,6 +59,9 @@ import ru.antispam.app.ui.theme.AppleRed
 fun SecurityRingWidget(
     report: SecurityScoreReport,
     onResolveIssue: (SecurityIssue) -> Unit,
+    onOneClickRemediate: () -> Unit = {},
+    isRemediating: Boolean = false,
+    remediationStatus: String? = null,
     modifier: Modifier = Modifier
 ) {
     var showIssuesDialog by remember { mutableStateOf(false) }
@@ -160,26 +163,53 @@ fun SecurityRingWidget(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Action Button
+            // One-Click Remediation Hero Button
             if (report.issues.isNotEmpty()) {
                 Button(
-                    onClick = { showIssuesDialog = true },
-                    modifier = Modifier.fillMaxWidth(),
+                    onClick = onOneClickRemediate,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = if (report.score < 50) AppleRed else AppleBlue
                     ),
-                    shape = RoundedCornerShape(14.dp)
+                    shape = RoundedCornerShape(14.dp),
+                    enabled = !isRemediating
                 ) {
-                    Icon(
-                        imageVector = if (report.score < 50) Icons.Rounded.Warning else Icons.Rounded.Security,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
+                    if (isRemediating) {
+                        androidx.compose.material3.CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            color = Color.White,
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = remediationStatus ?: "Устранение угроз...",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    } else {
+                        Icon(
+                            imageVector = if (report.score < 50) Icons.Rounded.Warning else Icons.Rounded.Security,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Устранить всё в 1 клик (${report.issues.size})",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                TextButton(onClick = { showIssuesDialog = true }) {
                     Text(
-                        text = "Устранить уязвимости (${report.issues.size})",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold
+                        text = "Показать список проблем детально",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                     )
                 }
             } else {

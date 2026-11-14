@@ -48,6 +48,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -61,6 +62,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -93,6 +97,8 @@ import ru.antispam.app.privacy.model.TriangulationRiskLevel
 import ru.antispam.app.privacy.model.UserInstalledCertificate
 import ru.antispam.app.ui.components.AppleGroupedCard
 import ru.antispam.app.ui.components.AppleHairlineDivider
+import ru.antispam.app.ui.privacy.components.RemediationCelebrationDialog
+import ru.antispam.app.ui.privacy.components.RemediationWizardBottomSheet
 import ru.antispam.app.ui.privacy.components.SecurityRingWidget
 import ru.antispam.app.ui.theme.AppleBlue
 import ru.antispam.app.ui.theme.AppleMintGreen
@@ -100,6 +106,7 @@ import ru.antispam.app.ui.theme.AppleOrange
 import ru.antispam.app.ui.theme.ApplePurple
 import ru.antispam.app.ui.theme.AppleRed
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun PrivacyShieldScreen(
     viewModel: PrivacyShieldViewModel,
@@ -110,6 +117,20 @@ fun PrivacyShieldScreen(
     val haptic = LocalHapticFeedback.current
 
     var coachmarkApp by remember { mutableStateOf<AppPrivacyRisk?>(null) }
+
+    // Instant verification upon returning from system settings
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.onAppResumed()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     LazyColumn(
         modifier = modifier
@@ -271,7 +292,13 @@ fun PrivacyShieldScreen(
                     onResolveIssue = { issue ->
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                         viewModel.resolveSecurityIssue(issue)
-                    }
+                    },
+                    onOneClickRemediate = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        viewModel.startOneClickRemediation()
+                    },
+                    isRemediating = state.isRemediationActive,
+                    remediationStatus = state.remediationStatusText
                 )
             }
         }
@@ -1180,6 +1207,33 @@ fun PrivacyShieldScreen(
             copiedCount = state.copiedAppCount,
             onDismiss = { viewModel.dismissVpnGuideDialog() },
             onLaunchVpn = { viewModel.launchVpnClient(state.selectedVpnFormat) }
+        )
+    }
+
+    // One-Click Guided Remediation Wizard Bottom Sheet
+    if (state.isWizardBottomSheetVisible) {
+        RemediationWizardBottomSheet(
+            plan = state.remediationPlan,
+            currentStepIndex = state.currentRemediationStepIndex,
+            onResolveStep = {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                viewModel.resolveCurrentWizardStep(context)
+            },
+            onTrustApp = {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                viewModel.trustCurrentWizardApp()
+            },
+            onDismiss = {
+                viewModel.dismissWizard()
+            }
+        )
+    }
+
+    // 100% Security Protection Index Celebration Dialog
+    if (state.showRemediationCelebration) {
+        RemediationCelebrationDialog(
+            score = state.securityScoreReport?.score ?: 100,
+            onDismiss = { viewModel.dismissWizard() }
         )
     }
 }

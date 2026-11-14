@@ -24,6 +24,8 @@ data/*.bin
 .gradle/
 build/
 android/.gradle/
+android/.kotlin/
+.kotlin/
 android/build/
 android/app/build/
 *.apk
