@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.provider.Settings
 import android.util.Log
+import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
@@ -831,10 +832,33 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
     }
 
     /**
+     * Whitelists an application across all privacy audits (Installed Apps Audit, SuperApp Shield,
+     * Notification Listener, Accessibility) and triggers an immediate refresh.
+     */
+    fun trustApp(packageName: String, appName: String) {
+        val app = getApplication<Application>()
+        TrustedAppManager.setAppTrusted(app, packageName, isTrusted = true)
+        Toast.makeText(app, "«$appName» добавлено в доверенные", Toast.LENGTH_SHORT).show()
+        refreshScan(force = true)
+    }
+
+    /**
      * Whitelists a SuperApp with QUERY_ALL_PACKAGES so it is exempted from security penalties.
      */
     fun trustSuperApp(packageName: String) {
-        TrustedAppManager.setSuperAppTrusted(getApplication(), packageName, isTrusted = true)
+        val app = getApplication<Application>()
+        TrustedAppManager.setAppTrusted(app, packageName, isTrusted = true)
+        Toast.makeText(app, "Приложение добавлено в доверенные", Toast.LENGTH_SHORT).show()
+        refreshScan(force = true)
+    }
+
+    /**
+     * Removes an application from the trusted whitelist.
+     */
+    fun untrustApp(packageName: String) {
+        val app = getApplication<Application>()
+        TrustedAppManager.setAppTrusted(app, packageName, isTrusted = false)
+        Toast.makeText(app, "Приложение удалено из доверенных", Toast.LENGTH_SHORT).show()
         refreshScan(force = true)
     }
 
@@ -868,7 +892,7 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
                 openDeepSleepSettings()
             }
             ru.antispam.app.privacy.AppThreatActionType.TRUST_APP -> {
-                trustSuperApp(app.packageName)
+                trustApp(app.packageName, app.appName)
             }
             ru.antispam.app.privacy.AppThreatActionType.MANAGE_PERMISSIONS -> {
                 preparePermissionRevocation(app.appName, app.packageName)

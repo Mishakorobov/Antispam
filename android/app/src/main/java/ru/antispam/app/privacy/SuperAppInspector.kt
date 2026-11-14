@@ -273,8 +273,8 @@ object SuperAppInspector {
                 val isDeepSleeping = AppDormancyHelper.isAppInDeepSleep(context, pkgName)
                 val isTrusted = TrustedAppManager.isSuperAppTrusted(context, pkgName)
 
-                // Exclude safe system components completely: prevents cluttering user UI with Samsung/Google apps
-                if (riskLevel == SuperAppRiskLevel.SAFE && !isTrusted && !isDeepSleeping) {
+                // Exclude safe system components and user-trusted apps completely: prevents cluttering user UI
+                if (riskLevel == SuperAppRiskLevel.SAFE || isTrusted) {
                     continue
                 }
 

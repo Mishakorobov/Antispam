@@ -143,6 +143,11 @@ object PrivacyScannerHelper {
                     continue
                 }
 
+                // Exclude apps that the user has explicitly trusted across privacy audits
+                if (TrustedAppManager.isAppTrusted(context, cleanPkg)) {
+                    continue
+                }
+
                 // Check granted runtime permissions
                 val reqPerms = pkg.requestedPermissions ?: emptyArray()
                 val reqFlags = pkg.requestedPermissionsFlags ?: IntArray(0)

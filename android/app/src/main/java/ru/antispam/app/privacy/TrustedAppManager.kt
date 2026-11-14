@@ -25,6 +25,7 @@ object TrustedAppManager {
     const val KEY_TRUSTED_NOTIFICATION_LISTENERS = "trusted_notification_listeners"
     const val KEY_TRUSTED_ACCESSIBILITY_SERVICES = "trusted_accessibility_services"
     const val KEY_TRUSTED_SUPERAPPS = "trusted_superapps"
+    const val KEY_TRUSTED_AUDIT_APPS = "trusted_audit_apps"
 
     /**
      * Recognized password managers and autofill accessibility services.
@@ -222,6 +223,61 @@ object TrustedAppManager {
     }
 
     /**
+     * Returns the set of user-whitelisted apps in the general installed apps audit.
+     */
+    fun getTrustedAuditApps(context: Context): Set<String> {
+        val prefs = getPrefs(context)
+        return prefs.getStringSet(KEY_TRUSTED_AUDIT_APPS, emptySet())
+            ?.map { it.lowercase().trim() }
+            ?.toSet() ?: emptySet()
+    }
+
+    /**
+     * Marks an app as trusted by the user, synchronizing across all audit vectors
+     * (SuperApp, Notification Listener, Accessibility Service, and Installed Apps Audit).
+     */
+    fun setAppTrusted(context: Context, packageName: String, isTrusted: Boolean) {
+        val prefs = getPrefs(context)
+        val current = prefs.getStringSet(KEY_TRUSTED_AUDIT_APPS, emptySet())
+            ?.toMutableSet() ?: mutableSetOf()
+        val normalized = packageName.lowercase().trim()
+        if (isTrusted) {
+            current.add(normalized)
+        } else {
+            current.remove(normalized)
+        }
+        prefs.edit().putStringSet(KEY_TRUSTED_AUDIT_APPS, current).apply()
+
+        // Also synchronize with SuperApp, Notification Listener and Accessibility trust
+        setSuperAppTrusted(context, packageName, isTrusted)
+        setNotificationListenerTrusted(context, packageName, isTrusted)
+        setAccessibilityServiceTrusted(context, packageName, isTrusted)
+    }
+
+    /**
+     * Checks if an app is trusted across any of the privacy audit vectors.
+     */
+    fun isAppTrusted(context: Context, packageName: String): Boolean {
+        val norm = packageName.lowercase().trim()
+        val auditTrusted = getTrustedAuditApps(context)
+        return auditTrusted.contains(norm) ||
+                isSuperAppTrusted(context, norm) ||
+                isNotificationListenerTrusted(context, norm) ||
+                isAccessibilityServiceTrusted(context, norm)
+    }
+
+    /**
+     * Returns the union of all user-trusted package names across all vectors.
+     */
+    fun getAllTrustedApps(context: Context): Set<String> {
+        val audit = getTrustedAuditApps(context)
+        val superApps = getTrustedSuperApps(context)
+        val listeners = getTrustedNotificationListeners(context)
+        val a11y = getTrustedAccessibilityServices(context)
+        return (audit + superApps + listeners + a11y)
+    }
+
+    /**
      * Clears all trusted apps.
      */
     fun clearAll(context: Context) {
@@ -229,6 +285,7 @@ object TrustedAppManager {
             .remove(KEY_TRUSTED_NOTIFICATION_LISTENERS)
             .remove(KEY_TRUSTED_ACCESSIBILITY_SERVICES)
             .remove(KEY_TRUSTED_SUPERAPPS)
+            .remove(KEY_TRUSTED_AUDIT_APPS)
             .apply()
     }
 }

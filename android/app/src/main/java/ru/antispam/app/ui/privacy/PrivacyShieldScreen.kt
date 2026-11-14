@@ -839,7 +839,7 @@ fun PrivacyShieldScreen(
                     },
                     onTrustApp = {
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        viewModel.trustSuperApp(appRisk.packageName)
+                        viewModel.trustApp(appRisk.packageName, appRisk.appName)
                     }
                 )
             }
@@ -1454,16 +1454,23 @@ private fun AppRiskCardItem(
                     )
                 }
 
-                if (onTrustApp != null && (app.hasQueryAllPackages || app.riskLevel == PrivacyRiskLevel.MEDIUM)) {
+                if (onTrustApp != null) {
                     OutlinedButton(
                         onClick = onTrustApp,
                         shape = RoundedCornerShape(10.dp)
                     ) {
+                        Icon(
+                            imageVector = Icons.Rounded.CheckCircle,
+                            contentDescription = null,
+                            modifier = Modifier.size(15.dp),
+                            tint = AppleMintGreen
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = "Доверять",
-                            fontSize = 13.sp,
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
                         )
                     }
                 }
