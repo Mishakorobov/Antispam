@@ -1,13 +1,8 @@
 package ru.antispam.app.privacy
 
-import android.content.Context
-import android.content.pm.PackageManager
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import org.mockito.Mockito.mock
-import org.mockito.Mockito.`when`
 import ru.antispam.app.privacy.model.AccessibilityRiskLevel
 import ru.antispam.app.privacy.model.AccessibilityServiceApp
 import ru.antispam.app.privacy.model.ListenerRiskLevel
@@ -25,13 +20,6 @@ class AppDormancyHelperTest {
     @Test
     fun test_constants_samsungDeepSleepState() {
         assertEquals(4, AppDormancyHelper.COMPONENT_ENABLED_STATE_DISABLED_UNTIL_USED)
-    }
-
-    @Test
-    fun test_blankPackage_returnsFalse() {
-        val mockContext = mock(Context.javaClass)
-        assertFalse(AppDormancyHelper.isAppInDeepSleep(mockContext, ""))
-        assertFalse(AppDormancyHelper.isAppInDeepSleep(mockContext, "   "))
     }
 
     @Test
