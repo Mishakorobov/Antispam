@@ -78,12 +78,15 @@ import ru.antispam.app.privacy.model.MaskingTargetApp
 import ru.antispam.app.privacy.model.NotificationListenerApp
 import ru.antispam.app.privacy.model.PackagePrivacyProfile
 import ru.antispam.app.privacy.model.RussianAppRegistry
+import ru.antispam.app.privacy.model.SecurityIssue
+import ru.antispam.app.privacy.model.SecurityScoreReport
 import ru.antispam.app.privacy.model.SuperAppRiskLevel
 import ru.antispam.app.privacy.model.TriangulationRiskApp
 import ru.antispam.app.privacy.model.TriangulationRiskLevel
 import ru.antispam.app.privacy.model.UserInstalledCertificate
 import ru.antispam.app.ui.components.AppleGroupedCard
 import ru.antispam.app.ui.components.AppleHairlineDivider
+import ru.antispam.app.ui.privacy.components.SecurityRingWidget
 import ru.antispam.app.ui.theme.AppleBlue
 import ru.antispam.app.ui.theme.AppleMintGreen
 import ru.antispam.app.ui.theme.AppleOrange
@@ -204,6 +207,19 @@ fun PrivacyShieldScreen(
                         }
                     }
                 }
+            }
+        }
+
+        // Phase 10.1: Unified Security & Protection Index Ring Widget
+        state.securityScoreReport?.let { report ->
+            item {
+                SecurityRingWidget(
+                    report = report,
+                    onResolveIssue = { issue ->
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        viewModel.resolveSecurityIssue(issue)
+                    }
+                )
             }
         }
 

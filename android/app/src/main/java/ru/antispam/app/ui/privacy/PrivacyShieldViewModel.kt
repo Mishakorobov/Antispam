@@ -25,6 +25,7 @@ import ru.antispam.app.privacy.PrivacyCategory
 import ru.antispam.app.privacy.PrivacyRiskLevel
 import ru.antispam.app.privacy.PrivacyScannerHelper
 import ru.antispam.app.privacy.PrivateCallLogVaultManager
+import ru.antispam.app.privacy.SecurityScoreEngine
 import ru.antispam.app.privacy.SpeakerphoneMonitor
 import ru.antispam.app.privacy.SuperAppInspector
 import ru.antispam.app.privacy.VpnClientFormat
@@ -36,6 +37,10 @@ import ru.antispam.app.privacy.model.ListenerRiskLevel
 import ru.antispam.app.privacy.model.MaskingTargetApp
 import ru.antispam.app.privacy.model.NotificationListenerApp
 import ru.antispam.app.privacy.model.PackagePrivacyProfile
+import ru.antispam.app.privacy.model.PrivacyAuditInput
+import ru.antispam.app.privacy.model.SecurityIssue
+import ru.antispam.app.privacy.model.SecurityIssueType
+import ru.antispam.app.privacy.model.SecurityScoreReport
 import ru.antispam.app.privacy.model.SuperAppRiskLevel
 import ru.antispam.app.privacy.model.TriangulationRiskApp
 import ru.antispam.app.privacy.model.TriangulationRiskLevel
@@ -90,7 +95,8 @@ data class PrivacyShieldUiState(
     val certMitmCriticalCount: Int = 0,
     val certWarningCount: Int = 0,
     val hasMitmThreat: Boolean = false,
-    val adIdProfile: AdIdPrivacyProfile? = null
+    val adIdProfile: AdIdPrivacyProfile? = null,
+    val securityScoreReport: SecurityScoreReport? = null
 )
 
 class PrivacyShieldViewModel(application: Application) : AndroidViewModel(application) {
@@ -193,6 +199,23 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
             // Phase 9.5: Inspect Cross-App Advertising ID (GAID / OAID) status
             val adProfile = AdIdManager.getPrivacyProfile(getApplication())
 
+            // Phase 10.1: Unified Security & Privacy Index Scoring (0–100%)
+            val poolCount = try { db.blockedPoolDao().getCount() } catch (_: Exception) { 0 }
+            val lastSync = try { db.syncMetadataDao().getValueLong("last_sync_timestamp") ?: System.currentTimeMillis() } catch (_: Exception) { System.currentTimeMillis() }
+            val isRegistryFresh = poolCount > 0 && (System.currentTimeMillis() - lastSync < 48 * 3600 * 1000L)
+
+            val auditInput = PrivacyAuditInput(
+                isRegistryUpToDate = isRegistryFresh,
+                isMicGuardEnabled = _uiState.value.isMicGuardEnabled,
+                hasNotificationSpies = highRiskListeners > 0,
+                isClipboardGuardEnabled = _uiState.value.isClipboardGuardEnabled,
+                hasMitmRootCa = certAudit.criticalCount > 0,
+                hasCriticalAccessibility = criticalAccess > 0,
+                hasVpnInventoryExposed = superAppAudit.isVpnInventoryExposed,
+                hasStealthGeoTrackers = triangulationAudit.criticalCount > 0
+            )
+            val scoreReport = SecurityScoreEngine.calculateScore(auditInput)
+
             _uiState.update {
                 it.copy(
                     scannedApps = apps,
@@ -221,8 +244,40 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
                     certMitmCriticalCount = certAudit.criticalCount,
                     certWarningCount = certAudit.warningCount,
                     hasMitmThreat = certAudit.hasMitmThreat,
-                    adIdProfile = adProfile
+                    adIdProfile = adProfile,
+                    securityScoreReport = scoreReport
                 )
+            }
+        }
+    }
+
+    fun resolveSecurityIssue(issue: SecurityIssue) {
+        when (issue.type) {
+            SecurityIssueType.REGISTRY_OUTDATED -> {
+                refreshScan()
+            }
+            SecurityIssueType.MIC_GUARD_DISABLED -> {
+                toggleMicGuard(true)
+                refreshScan()
+            }
+            SecurityIssueType.NOTIFICATION_SPY_DETECTED -> {
+                openNotificationListenerSettings()
+            }
+            SecurityIssueType.CLIPBOARD_GUARD_DISABLED -> {
+                toggleClipboardGuard(true)
+                refreshScan()
+            }
+            SecurityIssueType.MITM_ROOT_CA_DETECTED -> {
+                openSecuritySettings()
+            }
+            SecurityIssueType.CRITICAL_ACCESSIBILITY_DETECTED -> {
+                openAccessibilitySettings()
+            }
+            SecurityIssueType.SUPERAPP_VPN_EXPOSED -> {
+                copyVpnMaskingConfig(_uiState.value.selectedVpnFormat)
+            }
+            SecurityIssueType.STEALTH_GEO_DETECTED -> {
+                openLocationSettings()
             }
         }
     }
