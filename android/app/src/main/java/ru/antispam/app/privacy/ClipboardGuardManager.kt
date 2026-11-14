@@ -3,11 +3,11 @@ package ru.antispam.app.privacy
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.SharedPreferences
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import android.widget.Toast
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -36,6 +36,7 @@ object ClipboardGuardManager {
     private const val TAG = "ClipboardGuardManager"
     const val PREFS_NAME = "antispam_privacy_prefs"
     const val KEY_CLIPBOARD_GUARD_ENABLED = "clipboard_guard_enabled"
+    const val KEY_SHREDDED_OTP_COUNT = "shredded_otp_count"
     const val DEFAULT_SHRED_DELAY_MS = 30_000L // 30 seconds
 
     private val _isGuarding = MutableStateFlow(false)
@@ -43,6 +44,45 @@ object ClipboardGuardManager {
 
     private val _lastShreddedEvent = MutableStateFlow<String?>(null)
     val lastShreddedEvent: StateFlow<String?> = _lastShreddedEvent.asStateFlow()
+
+    private val _shreddedOtpCount = MutableStateFlow(0)
+    val shreddedOtpCount: StateFlow<Int> = _shreddedOtpCount.asStateFlow()
+
+    internal var sharedPreferencesProvider: ((Context) -> SharedPreferences)? = null
+
+    private fun getPrefs(context: Context): SharedPreferences {
+        return sharedPreferencesProvider?.invoke(context)
+            ?: context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    }
+
+    /**
+     * Phase 11.4: Retrieves total number of shredded 2FA OTP codes.
+     */
+    fun getShreddedOtpCount(context: Context): Int {
+        val count = getPrefs(context).getInt(KEY_SHREDDED_OTP_COUNT, 0)
+        _shreddedOtpCount.value = count
+        return count
+    }
+
+    /**
+     * Phase 11.4: Silently increments the shredded OTP counter in SharedPreferences.
+     */
+    fun incrementShreddedOtpCount(context: Context): Int {
+        val prefs = getPrefs(context)
+        val current = prefs.getInt(KEY_SHREDDED_OTP_COUNT, 0)
+        val next = current + 1
+        prefs.edit().putInt(KEY_SHREDDED_OTP_COUNT, next).apply()
+        _shreddedOtpCount.value = next
+        return next
+    }
+
+    /**
+     * Phase 11.4: Resets the shredded OTP counter.
+     */
+    fun resetShreddedOtpCount(context: Context) {
+        getPrefs(context).edit().putInt(KEY_SHREDDED_OTP_COUNT, 0).apply()
+        _shreddedOtpCount.value = 0
+    }
 
     private var clipListener: ClipboardManager.OnPrimaryClipChangedListener? = null
     internal var activeShredJob: Job? = null
@@ -137,11 +177,9 @@ object ClipboardGuardManager {
                                 } else {
                                     clipboard.setPrimaryClip(ClipData.newPlainText("", ""))
                                 }
-                                Toast.makeText(
-                                    context,
-                                    "🔒 2FA-код стерт из буфера обмена в целях безопасности",
-                                    Toast.LENGTH_SHORT
-                                ).show()
+                                // Phase 11.4: Silent increment of shredded OTP counter (no noisy Toast popup)
+                                val count = incrementShreddedOtpCount(context)
+                                Log.i(TAG, "Silent shred completed. Total shredded 2FA OTPs: $count")
                             } catch (ignored: Exception) {
                             }
                         }
@@ -177,6 +215,7 @@ object ClipboardGuardManager {
      * Checks user preference and initializes or stops guard accordingly.
      */
     fun updateStateFromPreferences(context: Context) {
+        getShreddedOtpCount(context)
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val enabled = prefs.getBoolean(KEY_CLIPBOARD_GUARD_ENABLED, true)
         if (enabled) {

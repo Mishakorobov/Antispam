@@ -309,13 +309,13 @@ fun PrivacyShieldScreen(
 
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Глушилка микрофона (Jammer)",
+                            text = "Обнуление аудиопотока (Zero-Buffer)",
                             fontSize = 17.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = if (state.isJammerActive) "Jammer активен: шпионам транслируется тишина" else "Монопольный аудиофокус при угрозе",
+                            text = if (state.isJammerActive) "Zero-Buffer активен: сторонним супераппам отдаются пустые буферы" else "Перехват и обнуление аудиопотока микрофона при угрозе",
                             fontSize = 13.sp,
                             color = if (state.isJammerActive) AppleMintGreen else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                         )
@@ -476,17 +476,39 @@ fun PrivacyShieldScreen(
                     Spacer(modifier = Modifier.width(16.dp))
 
                     Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "Шредер 2FA в буфере",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            if (state.shreddedOtpCount > 0) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(AppleMintGreen.copy(alpha = 0.15f))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "${state.shreddedOtpCount}",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = AppleMintGreen
+                                    )
+                                }
+                            }
+                        }
                         Text(
-                            text = "Шредер 2FA в буфере",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = if (state.isClipboardGuardEnabled)
-                                "Активен: самоочистка 2FA-кодов из буфера через 30 сек"
-                            else
-                                "Очистка кодов из буфера отключена",
+                            text = if (state.isClipboardGuardEnabled) {
+                                if (state.shreddedOtpCount > 0)
+                                    "Активен: очищено временных паролей: ${state.shreddedOtpCount}"
+                                else
+                                    "Активен: самоочистка 2FA-кодов из буфера через 30 сек"
+                            } else {
+                                "Очистка кодов из буфера отключена"
+                            },
                             fontSize = 13.sp,
                             color = if (state.isClipboardGuardEnabled) AppleMintGreen else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                         )

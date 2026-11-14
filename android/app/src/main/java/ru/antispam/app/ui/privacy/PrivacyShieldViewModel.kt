@@ -77,6 +77,7 @@ data class PrivacyShieldUiState(
     val isClipboardGuardEnabled: Boolean = true,
     val isClipboardGuarding: Boolean = false,
     val clipboardShreddedAlert: String? = null,
+    val shreddedOtpCount: Int = 0,
     val accessibilityServices: List<AccessibilityServiceApp> = emptyList(),
     val criticalAccessibilityCount: Int = 0,
     val superAppProfiles: List<PackagePrivacyProfile> = emptyList(),
@@ -113,7 +114,8 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
             isVaultEnabled = PrivateCallLogVaultManager.isVaultEnabled(application),
             isVipModeActive = VipModeManager.isVipModeActive(application),
             isBlockForeignPlus7Active = ru.antispam.app.util.KazakhstanBlockManager.isBlockForeignPlus7Active(application),
-            isClipboardGuardEnabled = prefs.getBoolean(ClipboardGuardManager.KEY_CLIPBOARD_GUARD_ENABLED, true)
+            isClipboardGuardEnabled = prefs.getBoolean(ClipboardGuardManager.KEY_CLIPBOARD_GUARD_ENABLED, true),
+            shreddedOtpCount = ClipboardGuardManager.getShreddedOtpCount(application)
         )
     )
     val uiState: StateFlow<PrivacyShieldUiState> = _uiState.asStateFlow()
@@ -153,7 +155,7 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
                 _uiState.update { it.copy(vaultCalls = records) }
             }
         }
-        // Phase 8.2: Observe 2FA ClipboardGuard status and shred events
+        // Phase 8.2 & 11.4: Observe 2FA ClipboardGuard status and shredded OTP counter
         viewModelScope.launch {
             ClipboardGuardManager.isGuarding.collect { guarding ->
                 _uiState.update { it.copy(isClipboardGuarding = guarding) }
@@ -162,6 +164,11 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
         viewModelScope.launch {
             ClipboardGuardManager.lastShreddedEvent.collect { event ->
                 _uiState.update { it.copy(clipboardShreddedAlert = event) }
+            }
+        }
+        viewModelScope.launch {
+            ClipboardGuardManager.shreddedOtpCount.collect { count ->
+                _uiState.update { it.copy(shreddedOtpCount = count) }
             }
         }
         refreshScan()
@@ -405,6 +412,14 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
 
     fun clearRevocationBanner() {
         _uiState.update { it.copy(revocationSuccessMessage = null) }
+    }
+
+    /**
+     * Phase 11.4: Resets the shredded OTP counter.
+     */
+    fun resetShreddedOtpCounter() {
+        ClipboardGuardManager.resetShreddedOtpCount(getApplication())
+        _uiState.update { it.copy(shreddedOtpCount = 0) }
     }
 
     /**
