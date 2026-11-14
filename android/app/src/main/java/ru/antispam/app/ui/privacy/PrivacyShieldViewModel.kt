@@ -24,9 +24,12 @@ import ru.antispam.app.privacy.PrivacyScannerHelper
 import ru.antispam.app.privacy.PrivateCallLogVaultManager
 import ru.antispam.app.privacy.SpeakerphoneMonitor
 import ru.antispam.app.privacy.SuperAppInspector
+import ru.antispam.app.privacy.VpnClientFormat
+import ru.antispam.app.privacy.VpnMaskingHelper
 import ru.antispam.app.privacy.model.AccessibilityRiskLevel
 import ru.antispam.app.privacy.model.AccessibilityServiceApp
 import ru.antispam.app.privacy.model.ListenerRiskLevel
+import ru.antispam.app.privacy.model.MaskingTargetApp
 import ru.antispam.app.privacy.model.NotificationListenerApp
 import ru.antispam.app.privacy.model.PackagePrivacyProfile
 import ru.antispam.app.privacy.model.SuperAppRiskLevel
@@ -66,7 +69,13 @@ data class PrivacyShieldUiState(
     val superAppCriticalCount: Int = 0,
     val superAppHighCount: Int = 0,
     val installedVpnClients: List<String> = emptyList(),
-    val isVpnInventoryExposed: Boolean = false
+    val isVpnInventoryExposed: Boolean = false,
+    val installedTargetApps: List<MaskingTargetApp> = emptyList(),
+    val detectedVpnClient: Pair<VpnClientFormat, String>? = null,
+    val selectedVpnFormat: VpnClientFormat = VpnClientFormat.AMNEZIA_VPN,
+    val isVpnConfigCopied: Boolean = false,
+    val copiedAppCount: Int = 0,
+    val showVpnGuideDialog: Boolean = false
 )
 
 class PrivacyShieldViewModel(application: Application) : AndroidViewModel(application) {
@@ -156,6 +165,10 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
             // Phase 9.1: Audit apps with QUERY_ALL_PACKAGES & inventory of VPN clients
             val superAppAudit = SuperAppInspector.auditSuperApps(getApplication())
 
+            // Phase 9.2: Target Russian apps requiring Split-Tunneling and VPN detection
+            val targetApps = VpnMaskingHelper.getInstalledTargetApps(getApplication())
+            val detectedVpn = VpnMaskingHelper.detectInstalledVpnClient(getApplication())
+
             _uiState.update {
                 it.copy(
                     scannedApps = apps,
@@ -173,7 +186,10 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
                     superAppCriticalCount = superAppAudit.criticalCount,
                     superAppHighCount = superAppAudit.highCount,
                     installedVpnClients = superAppAudit.installedVpnClients,
-                    isVpnInventoryExposed = superAppAudit.isVpnInventoryExposed
+                    isVpnInventoryExposed = superAppAudit.isVpnInventoryExposed,
+                    installedTargetApps = targetApps,
+                    detectedVpnClient = detectedVpn,
+                    selectedVpnFormat = detectedVpn?.first ?: it.selectedVpnFormat
                 )
             }
         }
@@ -189,6 +205,38 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
 
     fun openAppDetails(packageName: String) {
         SuperAppInspector.openAppDetailsSettings(getApplication(), packageName)
+    }
+
+    fun selectVpnFormat(format: VpnClientFormat) {
+        _uiState.update { it.copy(selectedVpnFormat = format, isVpnConfigCopied = false) }
+    }
+
+    fun copyVpnMaskingConfig(format: VpnClientFormat) {
+        val count = VpnMaskingHelper.copyConfigToClipboard(getApplication(), format)
+        _uiState.update {
+            it.copy(
+                isVpnConfigCopied = true,
+                copiedAppCount = count,
+                selectedVpnFormat = format,
+                showVpnGuideDialog = true
+            )
+        }
+    }
+
+    fun showVpnGuide() {
+        _uiState.update { it.copy(showVpnGuideDialog = true) }
+    }
+
+    fun dismissVpnGuideDialog() {
+        _uiState.update { it.copy(showVpnGuideDialog = false) }
+    }
+
+    fun openVpnSettings() {
+        VpnMaskingHelper.openVpnSettings(getApplication())
+    }
+
+    fun launchVpnClient(format: VpnClientFormat): Boolean {
+        return VpnMaskingHelper.launchVpnClient(getApplication(), format)
     }
 
     fun toggleMicGuard(enabled: Boolean) {

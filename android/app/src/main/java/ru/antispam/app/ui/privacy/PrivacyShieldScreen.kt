@@ -7,6 +7,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -66,11 +67,15 @@ import ru.antispam.app.data.local.entity.VaultCallRecordEntity
 import ru.antispam.app.privacy.AppPrivacyRisk
 import ru.antispam.app.privacy.PrivacyCategory
 import ru.antispam.app.privacy.PrivacyRiskLevel
+import ru.antispam.app.privacy.VpnClientFormat
+import ru.antispam.app.privacy.VpnMaskingHelper
 import ru.antispam.app.privacy.model.AccessibilityRiskLevel
 import ru.antispam.app.privacy.model.AccessibilityServiceApp
 import ru.antispam.app.privacy.model.ListenerRiskLevel
+import ru.antispam.app.privacy.model.MaskingTargetApp
 import ru.antispam.app.privacy.model.NotificationListenerApp
 import ru.antispam.app.privacy.model.PackagePrivacyProfile
+import ru.antispam.app.privacy.model.RussianAppRegistry
 import ru.antispam.app.privacy.model.SuperAppRiskLevel
 import ru.antispam.app.ui.components.AppleGroupedCard
 import ru.antispam.app.ui.components.AppleHairlineDivider
@@ -668,6 +673,25 @@ fun PrivacyShieldScreen(
             )
         }
 
+        // Phase 9.2: VPN Masking & Split-Tunneling Master
+        item {
+            VpnMaskingCard(
+                installedTargetApps = state.installedTargetApps,
+                detectedVpnClient = state.detectedVpnClient,
+                selectedFormat = state.selectedVpnFormat,
+                isConfigCopied = state.isVpnConfigCopied,
+                copiedCount = state.copiedAppCount,
+                onSelectFormat = { viewModel.selectVpnFormat(it) },
+                onCopyConfig = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    viewModel.copyVpnMaskingConfig(it)
+                },
+                onShowGuide = { viewModel.showVpnGuide() },
+                onLaunchVpn = { viewModel.launchVpnClient(it) },
+                onOpenVpnSettings = { viewModel.openVpnSettings() }
+            )
+        }
+
         // 4. Call Log Vault (Incognito Mode) with Biometric Lock
         item {
             AppleGroupedCard {
@@ -890,6 +914,16 @@ fun PrivacyShieldScreen(
                     Text(text = "Отмена")
                 }
             }
+        )
+    }
+
+    // Phase 9.2: VPN Masking Setup Guide Dialog
+    if (state.showVpnGuideDialog) {
+        VpnSetupGuideDialog(
+            format = state.selectedVpnFormat,
+            copiedCount = state.copiedAppCount,
+            onDismiss = { viewModel.dismissVpnGuideDialog() },
+            onLaunchVpn = { viewModel.launchVpnClient(state.selectedVpnFormat) }
         )
     }
 }
@@ -1583,4 +1617,299 @@ private fun SuperAppAuditCard(
             }
         }
     }
+}
+
+@Composable
+private fun VpnMaskingCard(
+    installedTargetApps: List<MaskingTargetApp>,
+    detectedVpnClient: Pair<VpnClientFormat, String>?,
+    selectedFormat: VpnClientFormat,
+    isConfigCopied: Boolean,
+    copiedCount: Int,
+    onSelectFormat: (VpnClientFormat) -> Unit,
+    onCopyConfig: (VpnClientFormat) -> Unit,
+    onShowGuide: () -> Unit,
+    onLaunchVpn: (VpnClientFormat) -> Unit,
+    onOpenVpnSettings: () -> Unit
+) {
+    AppleGroupedCard {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(ApplePurple.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Public,
+                        contentDescription = "VPN Masking Icon",
+                        tint = ApplePurple,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(14.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Маскировка VPN (Split-Tunneling)",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Скрытие туннеля от банков, Госуслуг и сервисов РФ",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Explanation Banner
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(ApplePurple.copy(alpha = 0.10f))
+                    .padding(12.dp)
+            ) {
+                Text(
+                    text = "🛡️ При включении раздельного туннелирования российские приложения работают напрямую через мобильную сеть (TRANSPORT_VPN = FALSE). Сбер, Т-Банк и Госуслуги открываются без ошибок, а остальной трафик защищен.",
+                    fontSize = 12.sp,
+                    color = ApplePurple,
+                    lineHeight = 16.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Stats info
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Найдено целевых приложений:",
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                )
+                Text(
+                    text = "${installedTargetApps.size} из ${RussianAppRegistry.TARGET_SERVICES.size}",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = AppleBlue
+                )
+            }
+
+            if (detectedVpnClient != null) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Обнаруженный VPN-клиент:",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    )
+                    Text(
+                        text = detectedVpnClient.second,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = AppleMintGreen
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Format Selection Chips
+            Text(
+                text = "Формат экспорта правил:",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                VpnClientFormat.values().forEach { format ->
+                    val isSelected = selectedFormat == format
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(
+                                if (isSelected) ApplePurple.copy(alpha = 0.2f)
+                                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                            )
+                            .clickable { onSelectFormat(format) }
+                            .padding(vertical = 8.dp, horizontal = 4.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = when (format) {
+                                VpnClientFormat.AMNEZIA_VPN -> "Amnezia"
+                                VpnClientFormat.V2RAYNG_NEKOBOX -> "v2ray / Neko"
+                                VpnClientFormat.RAW_PACKAGE_LIST -> "Список"
+                            },
+                            fontSize = 12.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isSelected) ApplePurple else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Action Buttons
+            Button(
+                onClick = { onCopyConfig(selectedFormat) },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = ApplePurple),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Icon(
+                    imageVector = if (isConfigCopied) Icons.Rounded.CheckCircle else Icons.Rounded.ContentPaste,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = if (isConfigCopied) "Скопировано ($copiedCount приложений)" else "Скопировать конфиг исключений",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                TextButton(
+                    onClick = onShowGuide,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = "Инструкция",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = AppleBlue
+                    )
+                }
+
+                if (detectedVpnClient != null) {
+                    TextButton(
+                        onClick = { onLaunchVpn(selectedFormat) },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = "Открыть VPN",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = AppleMintGreen
+                        )
+                    }
+                } else {
+                    TextButton(
+                        onClick = onOpenVpnSettings,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = "VPN системы",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VpnSetupGuideDialog(
+    format: VpnClientFormat,
+    copiedCount: Int,
+    onDismiss: () -> Unit,
+    onLaunchVpn: () -> Unit
+) {
+    val steps = remember(format) { VpnMaskingHelper.getSetupGuide(format) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                imageVector = Icons.Rounded.Public,
+                contentDescription = null,
+                tint = ApplePurple,
+                modifier = Modifier.size(32.dp)
+            )
+        },
+        title = {
+            Text(
+                text = "Настройка ${format.displayName}",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column {
+                if (copiedCount > 0) {
+                    Text(
+                        text = "✅ Список из $copiedCount целевых приложений скопирован в буфер обмена.",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = AppleMintGreen
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
+                steps.forEach { step ->
+                    Text(
+                        text = step,
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        lineHeight = 17.sp,
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onLaunchVpn()
+                    onDismiss()
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = ApplePurple)
+            ) {
+                Text(text = "Открыть клиент", color = Color.White)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = "Понятно")
+            }
+        }
+    )
 }
