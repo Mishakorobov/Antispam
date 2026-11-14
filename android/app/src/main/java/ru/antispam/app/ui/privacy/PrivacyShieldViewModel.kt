@@ -23,10 +23,13 @@ import ru.antispam.app.privacy.PrivacyRiskLevel
 import ru.antispam.app.privacy.PrivacyScannerHelper
 import ru.antispam.app.privacy.PrivateCallLogVaultManager
 import ru.antispam.app.privacy.SpeakerphoneMonitor
+import ru.antispam.app.privacy.SuperAppInspector
 import ru.antispam.app.privacy.model.AccessibilityRiskLevel
 import ru.antispam.app.privacy.model.AccessibilityServiceApp
 import ru.antispam.app.privacy.model.ListenerRiskLevel
 import ru.antispam.app.privacy.model.NotificationListenerApp
+import ru.antispam.app.privacy.model.PackagePrivacyProfile
+import ru.antispam.app.privacy.model.SuperAppRiskLevel
 import ru.antispam.app.util.VipModeManager
 
 data class PrivacyShieldUiState(
@@ -58,7 +61,12 @@ data class PrivacyShieldUiState(
     val isClipboardGuarding: Boolean = false,
     val clipboardShreddedAlert: String? = null,
     val accessibilityServices: List<AccessibilityServiceApp> = emptyList(),
-    val criticalAccessibilityCount: Int = 0
+    val criticalAccessibilityCount: Int = 0,
+    val superAppProfiles: List<PackagePrivacyProfile> = emptyList(),
+    val superAppCriticalCount: Int = 0,
+    val superAppHighCount: Int = 0,
+    val installedVpnClients: List<String> = emptyList(),
+    val isVpnInventoryExposed: Boolean = false
 )
 
 class PrivacyShieldViewModel(application: Application) : AndroidViewModel(application) {
@@ -145,6 +153,9 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
             val accessibility = AccessibilityAuditor.getActiveAccessibilityServices(getApplication())
             val criticalAccess = accessibility.count { it.riskLevel == AccessibilityRiskLevel.CRITICAL }
 
+            // Phase 9.1: Audit apps with QUERY_ALL_PACKAGES & inventory of VPN clients
+            val superAppAudit = SuperAppInspector.auditSuperApps(getApplication())
+
             _uiState.update {
                 it.copy(
                     scannedApps = apps,
@@ -157,7 +168,12 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
                     notificationListeners = listeners,
                     highRiskListenersCount = highRiskListeners,
                     accessibilityServices = accessibility,
-                    criticalAccessibilityCount = criticalAccess
+                    criticalAccessibilityCount = criticalAccess,
+                    superAppProfiles = superAppAudit.appsWithQueryAll,
+                    superAppCriticalCount = superAppAudit.criticalCount,
+                    superAppHighCount = superAppAudit.highCount,
+                    installedVpnClients = superAppAudit.installedVpnClients,
+                    isVpnInventoryExposed = superAppAudit.isVpnInventoryExposed
                 )
             }
         }
@@ -169,6 +185,10 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
 
     fun openAccessibilitySettings() {
         AccessibilityAuditor.openAccessibilitySettings(getApplication())
+    }
+
+    fun openAppDetails(packageName: String) {
+        SuperAppInspector.openAppDetailsSettings(getApplication(), packageName)
     }
 
     fun toggleMicGuard(enabled: Boolean) {

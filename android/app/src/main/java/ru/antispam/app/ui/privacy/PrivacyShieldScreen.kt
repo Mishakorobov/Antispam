@@ -70,6 +70,8 @@ import ru.antispam.app.privacy.model.AccessibilityRiskLevel
 import ru.antispam.app.privacy.model.AccessibilityServiceApp
 import ru.antispam.app.privacy.model.ListenerRiskLevel
 import ru.antispam.app.privacy.model.NotificationListenerApp
+import ru.antispam.app.privacy.model.PackagePrivacyProfile
+import ru.antispam.app.privacy.model.SuperAppRiskLevel
 import ru.antispam.app.ui.components.AppleGroupedCard
 import ru.antispam.app.ui.components.AppleHairlineDivider
 import ru.antispam.app.ui.theme.AppleBlue
@@ -647,6 +649,21 @@ fun PrivacyShieldScreen(
                 onOpenSettings = {
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                     viewModel.openAccessibilitySettings()
+                }
+            )
+        }
+
+        // Phase 9.1: SuperApp Total Inspection Auditor (QUERY_ALL_PACKAGES & VPN Surveillance)
+        item {
+            SuperAppAuditCard(
+                profiles = state.superAppProfiles,
+                criticalCount = state.superAppCriticalCount,
+                highCount = state.superAppHighCount,
+                installedVpnClients = state.installedVpnClients,
+                isVpnInventoryExposed = state.isVpnInventoryExposed,
+                onOpenAppDetails = { pkg ->
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    viewModel.openAppDetails(pkg)
                 }
             )
         }
@@ -1396,6 +1413,173 @@ private fun AccessibilityAuditCard(
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SuperAppAuditCard(
+    profiles: List<PackagePrivacyProfile>,
+    criticalCount: Int,
+    highCount: Int,
+    installedVpnClients: List<String>,
+    isVpnInventoryExposed: Boolean,
+    onOpenAppDetails: (String) -> Unit
+) {
+    AppleGroupedCard {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (criticalCount > 0) AppleRed.copy(alpha = 0.15f)
+                            else if (highCount > 0) AppleOrange.copy(alpha = 0.15f)
+                            else AppleMintGreen.copy(alpha = 0.15f)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (criticalCount > 0) Icons.Rounded.Warning else Icons.Rounded.Security,
+                        contentDescription = "SuperApp Shield Icon",
+                        tint = if (criticalCount > 0) AppleRed else if (highCount > 0) AppleOrange else AppleMintGreen,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(14.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "SuperApp Shield (Инспекция пакетов)",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = if (criticalCount > 0) "Обнаружено тотальное сканирование программ!"
+                        else if (highCount > 0) "Выявлен доступ к общему каталогу приложений"
+                        else "Контроль разрешения QUERY_ALL_PACKAGES",
+                        fontSize = 13.sp,
+                        color = if (criticalCount > 0) AppleRed else if (highCount > 0) AppleOrange else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // VPN Exposure Warning Banner
+            if (isVpnInventoryExposed) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(AppleOrange.copy(alpha = 0.12f))
+                        .padding(12.dp)
+                ) {
+                    Text(
+                        text = "⚠️ ВНИМАНИЕ: На устройстве найдены VPN-клиенты (${installedVpnClients.joinToString()}). Супераппы с доступом к полному каталогу могут каталогизировать их и передавать на сервера профилирования!",
+                        fontSize = 12.sp,
+                        color = AppleOrange,
+                        lineHeight = 16.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+            }
+
+            if (criticalCount > 0) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(AppleRed.copy(alpha = 0.12f))
+                        .padding(12.dp)
+                ) {
+                    Text(
+                        text = "🚨 КРИТИЧЕСКИЙ РИСК: $criticalCount коммерческих супераппов (MAX/VK) используют разрешение QUERY_ALL_PACKAGES для слежки за установленным ПО и фингерпринтинга устройства.",
+                        fontSize = 12.sp,
+                        color = AppleRed,
+                        lineHeight = 16.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+            } else if (profiles.isEmpty()) {
+                Text(
+                    text = "Ни одно стороннее приложение не имеет доступа к полному каталогу установленных программ. Ваши VPN-клиенты и утилиты защищены от каталогизации.",
+                    fontSize = 13.sp,
+                    color = AppleMintGreen
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+            }
+
+            // Display top apps with QUERY_ALL_PACKAGES
+            profiles.take(5).forEach { profile ->
+                val badgeColor = when (profile.riskLevel) {
+                    SuperAppRiskLevel.CRITICAL -> AppleRed
+                    SuperAppRiskLevel.HIGH -> AppleOrange
+                    SuperAppRiskLevel.MEDIUM -> AppleBlue
+                    SuperAppRiskLevel.SAFE -> AppleMintGreen
+                }
+                val badgeText = when (profile.riskLevel) {
+                    SuperAppRiskLevel.CRITICAL -> "СУПЕРАПП"
+                    SuperAppRiskLevel.HIGH -> "ТРЕКЕР"
+                    SuperAppRiskLevel.MEDIUM -> "УТИЛИТА"
+                    SuperAppRiskLevel.SAFE -> "СИСТЕМА"
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = profile.appName,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = profile.riskDescription,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                            lineHeight = 14.sp
+                        )
+                        if (profile.detectedCapabilities.isNotEmpty()) {
+                            Text(
+                                text = "Возможности: " + profile.detectedCapabilities.joinToString(" • "),
+                                fontSize = 10.sp,
+                                color = badgeColor,
+                                lineHeight = 13.sp
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    TextButton(
+                        onClick = { onOpenAppDetails(profile.packageName) }
+                    ) {
+                        Text(
+                            text = "Ограничить",
+                            fontSize = 12.sp,
+                            color = AppleBlue,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
             }
         }
     }
