@@ -16,6 +16,7 @@ import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import ru.antispam.app.privacy.MicJammerManager
 import ru.antispam.app.privacy.ProtectionPresetManager
 import ru.antispam.app.privacy.model.ProtectionPreset
 
@@ -142,14 +143,21 @@ object WearableAlertManager {
         // 1. Terminate active call
         endCallSafely(context)
 
-        // 2. Activate MAX_BUNKER preset (all shields up, incognito vault active, notifications silenced)
+        // 2. Immediate fail-safe microphone jamming (blocks audio even if OS denies call termination)
+        try {
+            MicJammerManager.startJamming(context)
+        } catch (e: Exception) {
+            Log.w(TAG, "MicJammerManager.startJamming failed: ${e.message}")
+        }
+
+        // 3. Activate MAX_BUNKER preset (all shields up, incognito vault active, notifications silenced)
         try {
             ProtectionPresetManager.applyPreset(context, ProtectionPreset.MAX_BUNKER)
         } catch (e: Exception) {
             Log.w(TAG, "ProtectionPresetManager.applyPreset failed: ${e.message}")
         }
 
-        // 3. Dismiss wearable alert
+        // 4. Dismiss wearable alert
         dismissAlert(context)
     }
 
