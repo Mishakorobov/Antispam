@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 400" width="480" height="400" role="img" aria-labelledby="title-s">
+  <title id="title-s">AntiSpam Shield — Stacked Lockup</title>
+  <defs>
+    <style>
+      .brand-title-s { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif; font-size: 42px; font-weight: 800; fill: #007AFF; text-anchor: middle; letter-spacing: -1px; }
+      .brand-sub-s { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif; font-size: 19px; font-weight: 500; fill: #555555; text-anchor: middle; }
+    </style>
+  </defs>
+  <g id="symbol" transform="translate(136, 24) scale(0.8125)">
+    <path fill="#007AFF" fill-rule="evenodd" d="M 128 24 C 180 24 216 46 216 92 V 128 C 216 176 168 212 128 232 C 88 212 40 176 40 128 V 92 C 40 46 76 24 128 24 Z  M 87 100 A 11 11 0 0 1 98 111 V 145 A 11 11 0 0 1 76 145 V 111 A 11 11 0 0 1 87 100 Z  M 128 68 A 11 11 0 0 1 139 79 V 177 A 11 11 0 0 1 117 177 V 79 A 11 11 0 0 1 128 68 Z  M 169 100 A 11 11 0 0 1 180 111 V 145 A 11 11 0 0 1 158 145 V 111 A 11 11 0 0 1 169 100 Z"/>
+  </g>
+  <g id="wordmark">
+    <text x="240" y="292" class="brand-title-s">AntiSpam Shield</text>
+    <text x="240" y="334" class="brand-sub-s">Блокировка спама и защита от прослушки</text>
+  </g>
+</svg>
