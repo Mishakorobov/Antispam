@@ -7,6 +7,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import ru.antispam.app.data.local.AppDatabase
+import ru.antispam.app.security.AntiTamperHelper
 import ru.antispam.app.worker.SyncPoolsWorker
 
 class AntiSpamApplication : Application() {
@@ -20,6 +21,12 @@ class AntiSpamApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         Log.i(TAG, "Starting AntiSpam Application...")
+
+        // Phase 7.1: Verify application package integrity and anti-tampering
+        val signatureResult = AntiTamperHelper.verifyAppSignature(this)
+        if (!signatureResult.isSafe) {
+            Log.e(TAG, "SECURITY ALERT: Application has been tampered with or re-signed! Status: ${signatureResult.status}")
+        }
 
         // Warm up Room database (initializes .createFromAsset if first launch)
         applicationScope.launch {

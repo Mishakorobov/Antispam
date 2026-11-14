@@ -7,14 +7,22 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -27,7 +35,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -35,6 +45,9 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import ru.antispam.app.security.AntiTamperHelper
+import ru.antispam.app.security.SignatureStatus
 import ru.antispam.app.ui.calllog.CallLogScreen
 import ru.antispam.app.ui.calllog.CallLogViewModel
 import ru.antispam.app.ui.privacy.PrivacyShieldScreen
@@ -43,6 +56,7 @@ import ru.antispam.app.ui.settings.SettingsScreen
 import ru.antispam.app.ui.settings.SettingsViewModel
 import ru.antispam.app.ui.theme.AntiSpamTheme
 import ru.antispam.app.ui.theme.AppleBlue
+import ru.antispam.app.ui.theme.AppleRed
 import ru.antispam.app.ui.whitelist.WhitelistScreen
 import ru.antispam.app.ui.whitelist.WhitelistViewModel
 
@@ -61,6 +75,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Phase 7.1: Enforce FLAG_SECURE on Activity window to block screen-scraping & screenshots
+        AntiTamperHelper.enforceSecureWindow(this)
 
         setContent {
             AntiSpamTheme {
@@ -160,11 +177,56 @@ fun MainAppScaffold(
             .fillMaxSize()
             .padding(bottom = innerPadding.calculateBottomPadding())
 
-        when (selectedTab) {
-            0 -> CallLogScreen(viewModel = callLogViewModel, onRequestRole = onRequestRole, modifier = modifier)
-            1 -> WhitelistScreen(viewModel = whitelistViewModel, modifier = modifier)
-            2 -> PrivacyShieldScreen(viewModel = privacyViewModel, modifier = modifier)
-            3 -> SettingsScreen(viewModel = settingsViewModel, modifier = modifier)
+        Column(modifier = modifier) {
+            val tamperState by AntiTamperHelper.verificationFlow.collectAsStateWithLifecycle()
+            if (tamperState?.status == SignatureStatus.TAMPERED) {
+                TamperedWarningBanner(
+                    message = tamperState?.message ?: "Обнаружена модифицированная версия приложения!"
+                )
+            }
+
+            val screenModifier = Modifier.fillMaxSize()
+            when (selectedTab) {
+                0 -> CallLogScreen(viewModel = callLogViewModel, onRequestRole = onRequestRole, modifier = screenModifier)
+                1 -> WhitelistScreen(viewModel = whitelistViewModel, modifier = screenModifier)
+                2 -> PrivacyShieldScreen(viewModel = privacyViewModel, modifier = screenModifier)
+                3 -> SettingsScreen(viewModel = settingsViewModel, modifier = screenModifier)
+            }
+        }
+    }
+}
+
+@Composable
+fun TamperedWarningBanner(message: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(AppleRed.copy(alpha = 0.15f))
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.Warning,
+            contentDescription = "Предупреждение безопасности",
+            tint = AppleRed,
+            modifier = Modifier.size(28.dp)
+        )
+        Spacer(modifier = Modifier.width(10.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Неофициальная модификация!",
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp,
+                color = AppleRed
+            )
+            Text(
+                text = message,
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
+                lineHeight = 15.sp
+            )
         }
     }
 }

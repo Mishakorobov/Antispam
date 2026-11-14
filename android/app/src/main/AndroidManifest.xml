@@ -19,7 +19,8 @@
 
     <application
         android:name=".AntiSpamApplication"
-        android:allowBackup="true"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
         android:icon="@android:drawable/sym_def_app_icon"
         android:label="AntiSpam"
         android:supportsRtl="true"
