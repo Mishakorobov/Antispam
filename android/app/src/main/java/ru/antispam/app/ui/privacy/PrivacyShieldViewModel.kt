@@ -15,6 +15,7 @@ import ru.antispam.app.data.local.entity.VaultCallRecordEntity
 import ru.antispam.app.privacy.AppPrivacyRisk
 import ru.antispam.app.privacy.MicGuardService
 import ru.antispam.app.privacy.MicJammerManager
+import ru.antispam.app.privacy.AccessibilityAuditor
 import ru.antispam.app.privacy.ClipboardGuardManager
 import ru.antispam.app.privacy.NotificationListenerAuditor
 import ru.antispam.app.privacy.PrivacyCategory
@@ -22,6 +23,8 @@ import ru.antispam.app.privacy.PrivacyRiskLevel
 import ru.antispam.app.privacy.PrivacyScannerHelper
 import ru.antispam.app.privacy.PrivateCallLogVaultManager
 import ru.antispam.app.privacy.SpeakerphoneMonitor
+import ru.antispam.app.privacy.model.AccessibilityRiskLevel
+import ru.antispam.app.privacy.model.AccessibilityServiceApp
 import ru.antispam.app.privacy.model.ListenerRiskLevel
 import ru.antispam.app.privacy.model.NotificationListenerApp
 import ru.antispam.app.util.VipModeManager
@@ -53,7 +56,9 @@ data class PrivacyShieldUiState(
     val highRiskListenersCount: Int = 0,
     val isClipboardGuardEnabled: Boolean = true,
     val isClipboardGuarding: Boolean = false,
-    val clipboardShreddedAlert: String? = null
+    val clipboardShreddedAlert: String? = null,
+    val accessibilityServices: List<AccessibilityServiceApp> = emptyList(),
+    val criticalAccessibilityCount: Int = 0
 )
 
 class PrivacyShieldViewModel(application: Application) : AndroidViewModel(application) {
@@ -136,6 +141,10 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
             val listeners = NotificationListenerAuditor.getEnabledNotificationListeners(getApplication())
             val highRiskListeners = listeners.count { it.riskLevel == ListenerRiskLevel.HIGH }
 
+            // Phase 8.3: Audit apps with active AccessibilityService access
+            val accessibility = AccessibilityAuditor.getActiveAccessibilityServices(getApplication())
+            val criticalAccess = accessibility.count { it.riskLevel == AccessibilityRiskLevel.CRITICAL }
+
             _uiState.update {
                 it.copy(
                     scannedApps = apps,
@@ -146,7 +155,9 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
                     messengersCount = messengers,
                     systemAppsCount = systems,
                     notificationListeners = listeners,
-                    highRiskListenersCount = highRiskListeners
+                    highRiskListenersCount = highRiskListeners,
+                    accessibilityServices = accessibility,
+                    criticalAccessibilityCount = criticalAccess
                 )
             }
         }
@@ -154,6 +165,10 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
 
     fun openNotificationListenerSettings() {
         NotificationListenerAuditor.openNotificationListenerSettings(getApplication())
+    }
+
+    fun openAccessibilitySettings() {
+        AccessibilityAuditor.openAccessibilitySettings(getApplication())
     }
 
     fun toggleMicGuard(enabled: Boolean) {
