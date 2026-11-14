@@ -40,7 +40,8 @@ data class SettingsUiState(
     val isFamilyLockEnabled: Boolean = false,
     val isDeviceSecure: Boolean = false,
     val p2pMessage: String? = null,
-    val isP2pSuccess: Boolean = false
+    val isP2pSuccess: Boolean = false,
+    val showManifestModal: Boolean = false
 )
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
@@ -205,5 +206,13 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun clearP2pMessage() {
         _uiState.update { it.copy(p2pMessage = null) }
+    }
+
+    fun openManifestModal() {
+        _uiState.update { it.copy(showManifestModal = true) }
+    }
+
+    fun closeManifestModal() {
+        _uiState.update { it.copy(showManifestModal = false) }
     }
 }

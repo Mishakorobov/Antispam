@@ -26,6 +26,7 @@ import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.FileDownload
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.Refresh
@@ -58,6 +59,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import ru.antispam.app.ui.onboarding.ZeroTelemetryManifestScreen
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -157,6 +161,19 @@ fun SettingsScreen(
                 }
             }
         )
+    }
+
+    if (state.showManifestModal) {
+        Dialog(
+            onDismissRequest = { viewModel.closeManifestModal() },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            ZeroTelemetryManifestScreen(
+                onAccept = { viewModel.closeManifestModal() },
+                isModal = true,
+                onClose = { viewModel.closeManifestModal() }
+            )
+        }
     }
 
     Scaffold(
@@ -596,6 +613,65 @@ fun SettingsScreen(
                         }
                     }
                     Spacer(modifier = Modifier.height(6.dp))
+                }
+            }
+
+            // Section 5: Суверенная приватность и Манифест
+            item {
+                SectionHeader("СУВЕРЕННАЯ ПРИВАТНОСТЬ")
+                AppleGroupedCard {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                viewModel.openManifestModal()
+                            }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(AppleBlue.copy(alpha = 0.12f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Shield,
+                                contentDescription = null,
+                                tint = AppleBlue,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(14.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Манифест Нулевой Телеметрии",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "100% On-Device • Без выгрузки контактов",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontSize = 12.5.sp,
+                                color = AppleMintGreen,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.OpenInNew,
+                            contentDescription = "Открыть",
+                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
             }
         }

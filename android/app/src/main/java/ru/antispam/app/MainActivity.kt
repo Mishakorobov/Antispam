@@ -34,6 +34,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -51,6 +52,8 @@ import ru.antispam.app.security.AntiTamperHelper
 import ru.antispam.app.security.SignatureStatus
 import ru.antispam.app.ui.calllog.CallLogScreen
 import ru.antispam.app.ui.calllog.CallLogViewModel
+import ru.antispam.app.ui.onboarding.OnboardingManager
+import ru.antispam.app.ui.onboarding.ZeroTelemetryManifestScreen
 import ru.antispam.app.ui.privacy.PrivacyShieldScreen
 import ru.antispam.app.ui.privacy.PrivacyShieldViewModel
 import ru.antispam.app.ui.settings.SettingsScreen
@@ -85,13 +88,25 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             AntiSpamTheme {
-                MainAppScaffold(
-                    callLogViewModel = callLogViewModel,
-                    whitelistViewModel = whitelistViewModel,
-                    privacyViewModel = privacyViewModel,
-                    settingsViewModel = settingsViewModel,
-                    onRequestRole = { requestCallScreeningRole() }
-                )
+                var manifestAccepted by rememberSaveable {
+                    mutableStateOf(OnboardingManager.isManifestAccepted(this@MainActivity))
+                }
+
+                if (!manifestAccepted) {
+                    ZeroTelemetryManifestScreen(
+                        onAccept = {
+                            manifestAccepted = true
+                        }
+                    )
+                } else {
+                    MainAppScaffold(
+                        callLogViewModel = callLogViewModel,
+                        whitelistViewModel = whitelistViewModel,
+                        privacyViewModel = privacyViewModel,
+                        settingsViewModel = settingsViewModel,
+                        onRequestRole = { requestCallScreeningRole() }
+                    )
+                }
             }
         }
     }
