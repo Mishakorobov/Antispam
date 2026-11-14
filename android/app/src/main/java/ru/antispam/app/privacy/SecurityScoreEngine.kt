@@ -37,6 +37,7 @@ object SecurityScoreEngine {
     const val PENALTY_SUPERAPP_VPN = 10
     const val PENALTY_STEALTH_GEO = 5
     const val PENALTY_CALL_FORWARDING = 15
+    const val PENALTY_2G_DOWNGRADE = 15
 
     /**
      * Calculates the security score report based on the provided audit inputs.
@@ -199,6 +200,22 @@ object SecurityScoreEngine {
                     severity = SecurityIssueSeverity.CRITICAL,
                     scoreDeduction = PENALTY_CALL_FORWARDING,
                     actionLabel = "Сбросить (##002#)"
+                )
+            )
+        }
+
+        // Phase 12.3: Active 2G cellular downgrade vulnerability (IMSI-Catcher exposure)
+        if (input.hasActive2GConnection) {
+            score -= PENALTY_2G_DOWNGRADE
+            issues.add(
+                SecurityIssue(
+                    id = "cellular_2g_downgrade",
+                    type = SecurityIssueType.CELLULAR_2G_DOWNGRADE_ACTIVE,
+                    title = "Уязвимость радиоэфира 2G (IMSI-Catcher)",
+                    description = "Активно соединение 2G (GSM/EDGE). Трафик уязвим к перехвату ложными базовыми станциями. Отключите 2G в настройках сети.",
+                    severity = SecurityIssueSeverity.CRITICAL,
+                    scoreDeduction = PENALTY_2G_DOWNGRADE,
+                    actionLabel = "Отключить 2G"
                 )
             )
         }

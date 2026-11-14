@@ -75,6 +75,9 @@ import ru.antispam.app.privacy.model.AccessibilityServiceApp
 import ru.antispam.app.privacy.model.AdIdPrivacyProfile
 import ru.antispam.app.privacy.model.CallForwardingReport
 import ru.antispam.app.privacy.model.CallForwardingType
+import ru.antispam.app.privacy.model.CellularGeneration
+import ru.antispam.app.privacy.model.CellularRiskLevel
+import ru.antispam.app.privacy.model.CellularSecurityReport
 import ru.antispam.app.privacy.model.CertificateRiskLevel
 import ru.antispam.app.privacy.model.ForwardingRiskLevel
 import ru.antispam.app.privacy.model.ListenerRiskLevel
@@ -803,6 +806,17 @@ fun PrivacyShieldScreen(
                 onConfirmClean = {
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                     viewModel.markCallForwardingCleared()
+                }
+            )
+        }
+
+        // Phase 12.3: Cellular Downgrade Shield (Anti-IMSI-Catcher)
+        item {
+            CellularSecurityCard(
+                report = state.cellularSecurityReport,
+                onOpenCellularSettings = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    viewModel.openCellularSettings()
                 }
             )
         }
@@ -2846,6 +2860,231 @@ private fun ForwardingQueryRow(
                 fontWeight = FontWeight.Bold,
                 color = AppleBlue
             )
+        }
+    }
+}
+
+/**
+ * Phase 12.3: CellularSecurityCard
+ * Displays radio network generation, IMSI-catcher downgrade risks,
+ * and 1-tap navigation to system SIM settings with instruction to disable 2G.
+ */
+@Composable
+private fun CellularSecurityCard(
+    report: CellularSecurityReport,
+    onOpenCellularSettings: () -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    val isDanger = report.is2GActive || report.riskLevel == CellularRiskLevel.CRITICAL
+    val isWarning = report.riskLevel == CellularRiskLevel.WARNING
+    val statusColor = when {
+        isDanger -> AppleRed
+        isWarning -> AppleOrange
+        else -> AppleMintGreen
+    }
+
+    AppleGroupedCard {
+        Column(modifier = Modifier.padding(vertical = 12.dp)) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(statusColor.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (isDanger) Icons.Rounded.Warning else Icons.Rounded.Public,
+                        contentDescription = "Cellular Shield Icon",
+                        tint = statusColor,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(14.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Защита радиоэфира",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(statusColor.copy(alpha = 0.15f))
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                        ) {
+                            Text(
+                                text = when {
+                                    isDanger -> "УГРОЗА 2G"
+                                    isWarning -> "СЕТЬ 3G"
+                                    else -> "ЗАЩИЩЕНО (${report.generation.code})"
+                                },
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = statusColor
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "Текущий стандарт: ${report.networkTypeName}",
+                        fontSize = 13.sp,
+                        color = if (isDanger) AppleRed else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Explanation / Summary
+            Text(
+                text = report.summary.ifEmpty {
+                    "Ложные базовые станции (IMSI-Catcher) глушат 4G/LTE, принуждая телефон переключиться в 2G (GSM), где шифрование A5/1 взламывается на лету или отсутствует вовсе (A5/0)."
+                },
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
+                lineHeight = 18.sp
+            )
+
+            if (isDanger) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(AppleRed.copy(alpha = 0.12f))
+                        .padding(10.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Rounded.Warning,
+                            contentDescription = null,
+                            tint = AppleRed,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Внимание: радиоэфир 2G уязвим к перехвату разговоров и СМС. Отключите 2G в настройках сети прямо сейчас!",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = AppleRed
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Button to open Cellular Settings
+            Button(
+                onClick = onOpenCellularSettings,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isDanger) AppleRed else AppleBlue
+                ),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Security,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Настройки сотовой сети (Отключить 2G)",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White
+                )
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // Expandable Instructions
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded }
+                    .padding(vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (expanded) "Скрыть инструкцию защиты от 2G" else "Как отключить 2G в Android (Инструкция)",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = AppleBlue
+                )
+                Text(
+                    text = if (expanded) "▲" else "▼",
+                    fontSize = 12.sp,
+                    color = AppleBlue
+                )
+            }
+
+            AnimatedVisibility(visible = expanded) {
+                Column(
+                    modifier = Modifier.padding(top = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    AppleHairlineDivider()
+
+                    Text(
+                        text = "Пошаговая инструкция защиты от IMSI-Catcher:",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    val steps = listOf(
+                        "1. Нажмите кнопку «Настройки сотовой сети» выше.",
+                        "2. Выберите вашу активную SIM-карту (например, SIM 1 или Т-Банк / МТС).",
+                        "3. Найдите пункт «Разрешить 2G» (Allow 2G).",
+                        "4. Переведите переключатель в положение ВЫКЛ. Смартфон больше никогда не подключится к уязвимым поддельным вышкам."
+                    )
+
+                    steps.forEach { step ->
+                        Text(
+                            text = step,
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
+                            lineHeight = 16.sp
+                        )
+                    }
+
+                    if (report.isNullCipherAlertSupported) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(AppleMintGreen.copy(alpha = 0.12f))
+                                .padding(8.dp)
+                        ) {
+                            Text(
+                                text = "🛡️ Android 14+: Уведомления об отсутствии шифрования (Null Cipher) ${if (report.isNullCipherAlertEnabled == true) "активны" else "поддерживаются системой"}.",
+                                fontSize = 11.sp,
+                                color = AppleMintGreen,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }

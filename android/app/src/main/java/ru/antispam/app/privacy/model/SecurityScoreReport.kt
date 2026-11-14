@@ -13,7 +13,8 @@ enum class SecurityIssueType {
     SUPERAPP_VPN_EXPOSED,
     STEALTH_GEO_DETECTED,
     ROOT_OR_HOOK_ENVIRONMENT, // Phase 11.1: Soft advisory warning for Root/Magisk/Frida
-    CALL_FORWARDING_ACTIVE // Phase 12.2: Rogue or unknown call forwarding active
+    CALL_FORWARDING_ACTIVE, // Phase 12.2: Rogue or unknown call forwarding active
+    CELLULAR_2G_DOWNGRADE_ACTIVE // Phase 12.3: Active 2G cellular downgrade vulnerability
 }
 
 /**
@@ -52,7 +53,8 @@ data class PrivacyAuditInput(
     val hasVpnInventoryExposed: Boolean = false,
     val hasStealthGeoTrackers: Boolean = false,
     val hasRootOrHooks: Boolean = false,
-    val hasCallForwarding: Boolean = false
+    val hasCallForwarding: Boolean = false,
+    val hasActive2GConnection: Boolean = false
 )
 
 /**

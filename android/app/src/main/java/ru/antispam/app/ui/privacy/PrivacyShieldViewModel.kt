@@ -19,6 +19,7 @@ import ru.antispam.app.privacy.AccessibilityAuditor
 import ru.antispam.app.privacy.ClipboardGuardManager
 import ru.antispam.app.privacy.AdIdManager
 import ru.antispam.app.privacy.CallForwardingAuditor
+import ru.antispam.app.privacy.CellularSecurityAuditor
 import ru.antispam.app.privacy.CertificateGuardManager
 import ru.antispam.app.privacy.GeoTriangulationAuditor
 import ru.antispam.app.privacy.NotificationListenerAuditor
@@ -37,6 +38,7 @@ import ru.antispam.app.privacy.model.AccessibilityServiceApp
 import ru.antispam.app.privacy.model.AdIdPrivacyProfile
 import ru.antispam.app.privacy.model.CallForwardingReport
 import ru.antispam.app.privacy.model.CallForwardingType
+import ru.antispam.app.privacy.model.CellularSecurityReport
 import ru.antispam.app.privacy.model.ListenerRiskLevel
 import ru.antispam.app.privacy.model.MaskingTargetApp
 import ru.antispam.app.privacy.model.NotificationListenerApp
@@ -103,6 +105,7 @@ data class PrivacyShieldUiState(
     val hasMitmThreat: Boolean = false,
     val adIdProfile: AdIdPrivacyProfile? = null,
     val callForwardingReport: CallForwardingReport = CallForwardingReport(),
+    val cellularSecurityReport: CellularSecurityReport = CellularSecurityReport(),
     val securityScoreReport: SecurityScoreReport? = null
 )
 
@@ -225,6 +228,9 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
             // Phase 12.2: Audit covert call forwarding and SMS diverts
             val forwardingReport = CallForwardingAuditor.auditCallForwarding(getApplication())
 
+            // Phase 12.3: Audit cellular 2G downgrade attacks and null cipher
+            val cellularReport = CellularSecurityAuditor.auditCellularSecurity(getApplication())
+
             val auditInput = PrivacyAuditInput(
                 isRegistryUpToDate = isRegistryFresh,
                 isMicGuardEnabled = _uiState.value.isMicGuardEnabled,
@@ -235,7 +241,8 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
                 hasVpnInventoryExposed = superAppAudit.isVpnInventoryExposed,
                 hasStealthGeoTrackers = triangulationAudit.criticalCount > 0,
                 hasRootOrHooks = envReport.hasPrivilegeOrHookExposure,
-                hasCallForwarding = forwardingReport.hasActiveForwarding
+                hasCallForwarding = forwardingReport.hasActiveForwarding,
+                hasActive2GConnection = cellularReport.is2GActive
             )
             val scoreReport = SecurityScoreEngine.calculateScore(auditInput)
 
@@ -269,6 +276,7 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
                     hasMitmThreat = certAudit.hasMitmThreat,
                     adIdProfile = adProfile,
                     callForwardingReport = forwardingReport,
+                    cellularSecurityReport = cellularReport,
                     securityScoreReport = scoreReport
                 )
             }
@@ -308,6 +316,9 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
             }
             SecurityIssueType.CALL_FORWARDING_ACTIVE -> {
                 openResetCallForwardingDialer()
+            }
+            SecurityIssueType.CELLULAR_2G_DOWNGRADE_ACTIVE -> {
+                openCellularSettings()
             }
         }
     }
@@ -360,6 +371,14 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
     fun markCallForwardingCleared() {
         CallForwardingAuditor.markAllForwardingCleared(getApplication())
         refreshScan()
+    }
+
+    /**
+     * Phase 12.3: Opens system mobile network operator settings
+     * allowing the user to toggle "Allow 2G" off to defeat IMSI-Catchers.
+     */
+    fun openCellularSettings() {
+        CellularSecurityAuditor.openCellularSettings(getApplication())
     }
 
     fun openAppDetails(packageName: String) {
@@ -495,7 +514,8 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
                 hasVpnInventoryExposed = state.isVpnInventoryExposed,
                 hasStealthGeoTrackers = state.triangulationCriticalCount > 0,
                 hasRootOrHooks = hasRootAdvisory,
-                hasCallForwarding = state.callForwardingReport.hasActiveForwarding
+                hasCallForwarding = state.callForwardingReport.hasActiveForwarding,
+                hasActive2GConnection = state.cellularSecurityReport.is2GActive
             )
             state.copy(
                 notificationListeners = updatedListeners,
@@ -536,7 +556,8 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
                 hasVpnInventoryExposed = state.isVpnInventoryExposed,
                 hasStealthGeoTrackers = state.triangulationCriticalCount > 0,
                 hasRootOrHooks = hasRootAdvisory,
-                hasCallForwarding = state.callForwardingReport.hasActiveForwarding
+                hasCallForwarding = state.callForwardingReport.hasActiveForwarding,
+                hasActive2GConnection = state.cellularSecurityReport.is2GActive
             )
             state.copy(
                 accessibilityServices = updatedServices,
