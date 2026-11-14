@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
@@ -42,7 +43,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
@@ -52,8 +52,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ru.antispam.app.privacy.model.ProtectionPreset
 import ru.antispam.app.ui.components.AppleGroupedCard
 import ru.antispam.app.ui.components.AppleHairlineDivider
+import ru.antispam.app.ui.settings.components.OemBatteryOptimizationBanner
 import ru.antispam.app.ui.theme.AppleBlue
 import ru.antispam.app.ui.theme.AppleMintGreen
+import ru.antispam.app.ui.theme.AppleOrange
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -90,7 +92,26 @@ fun SettingsScreen(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
-            // Section 0: Phase 10.2 Пресеты комплексной защиты в 1 клик
+            // Section 0: Phase 10.3 Адаптивный OEM-баннер оптимизации батареи и автозапуска
+            if (state.showOemBanner) {
+                item {
+                    SectionHeader("ЭНЕРГОСБЕРЕЖЕНИЕ И АВТОЗАПУСК")
+                    OemBatteryOptimizationBanner(
+                        vendor = state.oemVendor,
+                        isIgnored = state.isBatteryOptimizationIgnored,
+                        onOpenSettings = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            viewModel.openOemAutostartSettings()
+                        },
+                        onDismiss = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            viewModel.dismissOemBanner()
+                        }
+                    )
+                }
+            }
+
+            // Section 1: Phase 10.2 Пресеты комплексной защиты в 1 клик
             item {
                 SectionHeader("ПРОФИЛИ ЗАЩИТЫ В 1 КЛИК")
                 AppleGroupedCard {
@@ -110,7 +131,7 @@ fun SettingsScreen(
                 }
             }
 
-            // Section 1: Категории блокировки
+            // Section 2: Категории блокировки
             item {
                 SectionHeader("КАТЕГОРИИ ФИЛЬТРАЦИИ")
                 AppleGroupedCard {
@@ -146,7 +167,7 @@ fun SettingsScreen(
                 }
             }
 
-            // Section 2: Post-Call UX
+            // Section 3: Post-Call UX
             item {
                 SectionHeader("ОБРАТНАЯ СВЯЗЬ (POST-CALL UX)")
                 AppleGroupedCard {
@@ -191,7 +212,7 @@ fun SettingsScreen(
                 }
             }
 
-            // Section 3: База данных и синхронизация
+            // Section 4: База данных и синхронизация
             item {
                 SectionHeader("БАЗА ДАННЫХ И ОБНОВЛЕНИЯ")
                 AppleGroupedCard {
@@ -230,6 +251,39 @@ fun SettingsScreen(
                             style = MaterialTheme.typography.bodyLarge,
                             fontWeight = FontWeight.SemiBold,
                             color = if (state.pendingReportsCount > 0) AppleBlue else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                        )
+                    }
+                    AppleHairlineDivider()
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                viewModel.openOemAutostartSettings()
+                            }
+                            .padding(vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Автозапуск (${state.oemVendor.brandName})",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = if (state.isBatteryOptimizationIgnored) "Фоновая работа разрешена" else "Нажмите для настройки автозапуска",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontSize = 12.sp,
+                                color = if (state.isBatteryOptimizationIgnored) AppleMintGreen else AppleOrange
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.OpenInNew,
+                            contentDescription = null,
+                            tint = AppleBlue,
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                     AppleHairlineDivider()

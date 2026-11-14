@@ -15,6 +15,8 @@ import kotlinx.coroutines.launch
 import ru.antispam.app.data.local.AppDatabase
 import ru.antispam.app.privacy.ProtectionPresetManager
 import ru.antispam.app.privacy.model.ProtectionPreset
+import ru.antispam.app.util.OemOnboardingHelper
+import ru.antispam.app.util.OemVendor
 import ru.antispam.app.worker.SyncPoolsWorker
 
 data class SettingsUiState(
@@ -26,7 +28,10 @@ data class SettingsUiState(
     val pendingReportsCount: Int = 0,
     val currentDatabaseVersion: Long = 0L,
     val isSyncing: Boolean = false,
-    val activePreset: ProtectionPreset = ProtectionPreset.ANTI_EAVESDROPPING
+    val activePreset: ProtectionPreset = ProtectionPreset.ANTI_EAVESDROPPING,
+    val oemVendor: OemVendor = OemVendor.GENERIC_AOSP,
+    val isBatteryOptimizationIgnored: Boolean = true,
+    val showOemBanner: Boolean = false
 )
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
@@ -47,6 +52,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             val ver = db.syncMetadataDao().getValueLong("last_delta_version") ?: 0L
             val activePreset = ProtectionPresetManager.getActivePreset(getApplication())
 
+            val vendor = OemOnboardingHelper.detectOem()
+            val isIgnored = OemOnboardingHelper.isIgnoringBatteryOptimizations(getApplication())
+            val isBannerDismissed = prefs.getBoolean("oem_banner_dismissed", false)
+            val shouldShowBanner = !isBannerDismissed && (vendor.isAggressiveKiller || !isIgnored)
+
             _uiState.update {
                 it.copy(
                     blockSurveys = prefs.getBoolean("block_surveys", true),
@@ -57,7 +67,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                     pendingReportsCount = pendingCount,
                     currentDatabaseVersion = ver,
                     isSyncing = false,
-                    activePreset = activePreset
+                    activePreset = activePreset,
+                    oemVendor = vendor,
+                    isBatteryOptimizationIgnored = isIgnored,
+                    showOemBanner = shouldShowBanner
                 )
             }
         }
@@ -70,6 +83,22 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun applyProtectionPreset(preset: ProtectionPreset) {
         ProtectionPresetManager.applyPreset(getApplication(), preset)
         loadSettings()
+    }
+
+    /**
+     * Phase 10.3: Opens the OEM-specific autostart or battery management screen.
+     */
+    fun openOemAutostartSettings() {
+        OemOnboardingHelper.openAutostartSettings(getApplication())
+        loadSettings()
+    }
+
+    /**
+     * Phase 10.3: User can dismiss the OEM banner once configured or acknowledged.
+     */
+    fun dismissOemBanner() {
+        prefs.edit().putBoolean("oem_banner_dismissed", true).apply()
+        _uiState.update { it.copy(showOemBanner = false) }
     }
 
     fun setSetting(key: String, value: Boolean) {
