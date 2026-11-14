@@ -1,0 +1,62 @@
+name: Ingest Crowdsourced Spam Reports
+
+on:
+  repository_dispatch:
+    types: [crowdsource_reports]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  ingest-reports:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Append Crowdsourced Reports to Data Log
+        env:
+          PAYLOAD: ${{ toJson(github.event.client_payload) }}
+        run: |
+          mkdir -p data
+          python -c "
+          import os, json
+          payload_raw = os.getenv('PAYLOAD')
+          if payload_raw:
+              payload = json.loads(payload_raw)
+          else:
+              payload = {'device_hash': 'manual_test', 'reports': []}
+
+          reports = payload.get('reports', [])
+          device_hash = payload.get('device_hash', 'unknown')
+          timestamp = payload.get('timestamp', '')
+
+          out_file = 'data/crowdsourced_reports.jsonl'
+          with open(out_file, 'a', encoding='utf-8') as f:
+              for r in reports:
+                  record = {
+                      'device_hash': device_hash,
+                      'timestamp': timestamp,
+                      'phone_number': r.get('phone_number'),
+                      'category': r.get('category'),
+                      'call_duration_seconds': r.get('call_duration_seconds', 0)
+                  }
+                  f.write(json.dumps(record, ensure_ascii=False) + '\n')
+
+          print(f'Successfully ingested {len(reports)} reports into {out_file}')
+          "
+
+      - name: Commit Updated Feedback Log
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/crowdsourced_reports.jsonl
+          git commit -m "chore(crowdsource): append user feedback reports [skip ci]" || echo "No changes to commit"
+          git push origin HEAD:${{ github.ref_name }} || echo "Push skipped or up-to-date"

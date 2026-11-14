@@ -1,0 +1,9 @@
+name = "antispam-report-bridge"
+main = "src/index.js"
+compatibility_date = "2024-11-01"
+account_id = "376c6ef750128bc5a72058084930c8d1"
+
+[vars]
+GITHUB_OWNER = "Mishakorobov"
+GITHUB_REPO = "Antispam"
+EVENT_TYPE = "crowdsource_reports"

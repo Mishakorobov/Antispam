@@ -188,8 +188,8 @@ class SyncRepository(
      * Circuit 2 (Autonomous / Fallback): High-availability binary ASPB download via GitHub Releases Global CDN.
      */
     suspend fun synchronize(deviceHash: String? = null): SyncResult = withContext(Dispatchers.IO) {
-        // Step 0: Flush offline reports if custom backend server is active
-        if (deviceHash != null && !NetworkModule.isServerlessMode) {
+        // Step 0: Flush offline reports (via Cloudflare Worker bridge in Serverless mode, or primary API)
+        if (deviceHash != null) {
             try {
                 flushPendingReports(deviceHash)
             } catch (e: Exception) {
@@ -372,7 +372,14 @@ class SyncRepository(
             }
         )
 
-        api.submitBatchReports(batchPayload)
+        val targetApi = if (NetworkModule.isServerlessMode) {
+            NetworkModule.serverlessReportApiService
+        } else {
+            api
+        }
+
+        targetApi.submitBatchReports(batchPayload)
         db.pendingReportDao().deleteByIds(pending.map { it.id })
+        Log.i(TAG, "Successfully flushed ${pending.size} reports to ${if (NetworkModule.isServerlessMode) "Cloudflare Worker Bridge" else "Primary Server"}")
     }
 }

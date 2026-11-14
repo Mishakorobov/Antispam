@@ -64,4 +64,16 @@ object NetworkModule {
     val apiService: AntiSpamApiService by lazy {
         createApiService()
     }
+
+    /**
+     * Deployed Cloudflare Worker Report Bridge for serverless crowdsourcing:
+     * Accepts complaints from autonomous mobile clients without requiring a self-hosted VPS.
+     */
+    const val DEFAULT_SERVERLESS_REPORT_URL = "https://antispam-report-bridge.speedcam.workers.dev/"
+
+    var serverlessReportBaseUrl: String = DEFAULT_SERVERLESS_REPORT_URL
+
+    val serverlessReportApiService: AntiSpamApiService by lazy {
+        createApiService(serverlessReportBaseUrl)
+    }
 }
