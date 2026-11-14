@@ -15,6 +15,7 @@ import ru.antispam.app.data.local.entity.VaultCallRecordEntity
 import ru.antispam.app.privacy.AppPrivacyRisk
 import ru.antispam.app.privacy.MicGuardService
 import ru.antispam.app.privacy.MicJammerManager
+import ru.antispam.app.privacy.ClipboardGuardManager
 import ru.antispam.app.privacy.NotificationListenerAuditor
 import ru.antispam.app.privacy.PrivacyCategory
 import ru.antispam.app.privacy.PrivacyRiskLevel
@@ -49,7 +50,10 @@ data class PrivacyShieldUiState(
     val pendingRevokeAppName: String? = null,
     val revocationSuccessMessage: String? = null,
     val notificationListeners: List<NotificationListenerApp> = emptyList(),
-    val highRiskListenersCount: Int = 0
+    val highRiskListenersCount: Int = 0,
+    val isClipboardGuardEnabled: Boolean = true,
+    val isClipboardGuarding: Boolean = false,
+    val clipboardShreddedAlert: String? = null
 )
 
 class PrivacyShieldViewModel(application: Application) : AndroidViewModel(application) {
@@ -63,7 +67,8 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
             isJammerAutoEnabled = prefs.getBoolean(KEY_JAMMER_AUTO_ENABLED, true),
             isVaultEnabled = PrivateCallLogVaultManager.isVaultEnabled(application),
             isVipModeActive = VipModeManager.isVipModeActive(application),
-            isBlockForeignPlus7Active = ru.antispam.app.util.KazakhstanBlockManager.isBlockForeignPlus7Active(application)
+            isBlockForeignPlus7Active = ru.antispam.app.util.KazakhstanBlockManager.isBlockForeignPlus7Active(application),
+            isClipboardGuardEnabled = prefs.getBoolean(ClipboardGuardManager.KEY_CLIPBOARD_GUARD_ENABLED, true)
         )
     )
     val uiState: StateFlow<PrivacyShieldUiState> = _uiState.asStateFlow()
@@ -101,6 +106,17 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
         viewModelScope.launch {
             db.privateCallLogDao().getAllRecordsFlow().collect { records ->
                 _uiState.update { it.copy(vaultCalls = records) }
+            }
+        }
+        // Phase 8.2: Observe 2FA ClipboardGuard status and shred events
+        viewModelScope.launch {
+            ClipboardGuardManager.isGuarding.collect { guarding ->
+                _uiState.update { it.copy(isClipboardGuarding = guarding) }
+            }
+        }
+        viewModelScope.launch {
+            ClipboardGuardManager.lastShreddedEvent.collect { event ->
+                _uiState.update { it.copy(clipboardShreddedAlert = event) }
             }
         }
         refreshScan()
@@ -148,6 +164,17 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
     fun toggleJammerAutoEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_JAMMER_AUTO_ENABLED, enabled).apply()
         _uiState.update { it.copy(isJammerAutoEnabled = enabled) }
+    }
+
+    fun toggleClipboardGuard(enabled: Boolean) {
+        prefs.edit().putBoolean(ClipboardGuardManager.KEY_CLIPBOARD_GUARD_ENABLED, enabled).apply()
+        _uiState.update { it.copy(isClipboardGuardEnabled = enabled) }
+        ClipboardGuardManager.updateStateFromPreferences(getApplication())
+    }
+
+    fun clearClipboardAlert() {
+        ClipboardGuardManager.clearAlert()
+        _uiState.update { it.copy(clipboardShreddedAlert = null) }
     }
 
     fun toggleCallVault(enabled: Boolean) {

@@ -7,6 +7,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import ru.antispam.app.data.local.AppDatabase
+import ru.antispam.app.privacy.ClipboardGuardManager
 import ru.antispam.app.security.AntiTamperHelper
 import ru.antispam.app.worker.SyncPoolsWorker
 
@@ -27,6 +28,9 @@ class AntiSpamApplication : Application() {
         if (!signatureResult.isSafe) {
             Log.e(TAG, "SECURITY ALERT: Application has been tampered with or re-signed! Status: ${signatureResult.status}")
         }
+
+        // Phase 8.2: Start 2FA Clipboard shredder if enabled in preferences
+        ClipboardGuardManager.updateStateFromPreferences(this)
 
         // Warm up Room database (initializes .createFromAsset if first launch)
         applicationScope.launch {

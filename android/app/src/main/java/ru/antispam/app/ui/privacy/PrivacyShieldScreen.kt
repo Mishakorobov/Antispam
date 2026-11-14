@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.Fingerprint
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Mic
@@ -142,6 +143,44 @@ fun PrivacyShieldScreen(
                                 )
                             }
                             IconButton(onClick = { viewModel.clearRevocationBanner() }) {
+                                Icon(
+                                    imageVector = Icons.Rounded.CheckCircle,
+                                    contentDescription = "Dismiss",
+                                    tint = AppleMintGreen
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Phase 8.2: 2FA Clipboard Shredded Notification Banner
+        if (state.clipboardShreddedAlert != null) {
+            item {
+                AnimatedVisibility(visible = true, enter = fadeIn(), exit = fadeOut()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(AppleMintGreen.copy(alpha = 0.15f))
+                            .padding(16.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Rounded.ContentPaste,
+                                contentDescription = "Clipboard Shredded",
+                                tint = AppleMintGreen,
+                                modifier = Modifier.size(26.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = state.clipboardShreddedAlert!!,
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.weight(1f)
+                            )
+                            IconButton(onClick = { viewModel.clearClipboardAlert() }) {
                                 Icon(
                                     imageVector = Icons.Rounded.CheckCircle,
                                     contentDescription = "Dismiss",
@@ -373,6 +412,65 @@ fun PrivacyShieldScreen(
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = Color.White,
                             checkedTrackColor = AppleBlue
+                        )
+                    )
+                }
+
+                AppleHairlineDivider()
+
+                // Phase 8.2: 2FA Clipboard Shredder
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(52.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (state.isClipboardGuardEnabled) AppleMintGreen.copy(alpha = 0.15f)
+                                else MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.ContentPaste,
+                            contentDescription = "Clipboard Guard",
+                            tint = if (state.isClipboardGuardEnabled) AppleMintGreen else MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(16.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Шредер 2FA в буфере",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = if (state.isClipboardGuardEnabled)
+                                "Активен: самоочистка 2FA-кодов из буфера через 30 сек"
+                            else
+                                "Очистка кодов из буфера отключена",
+                            fontSize = 13.sp,
+                            color = if (state.isClipboardGuardEnabled) AppleMintGreen else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        )
+                    }
+
+                    Switch(
+                        checked = state.isClipboardGuardEnabled,
+                        onCheckedChange = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            viewModel.toggleClipboardGuard(it)
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = AppleMintGreen
                         )
                     )
                 }
