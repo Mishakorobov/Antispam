@@ -51,7 +51,8 @@ data class PackagePrivacyProfile(
     val category: SuperAppCategory,
     val riskDescription: String,
     val detectedCapabilities: List<String> = emptyList(),
-    val isDeepSleeping: Boolean = false
+    val isDeepSleeping: Boolean = false,
+    val isTrusted: Boolean = false
 )
 
 /**

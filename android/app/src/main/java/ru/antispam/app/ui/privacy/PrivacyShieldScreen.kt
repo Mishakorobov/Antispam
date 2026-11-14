@@ -27,6 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ContentPaste
+import androidx.compose.material.icons.rounded.DoneAll
 import androidx.compose.material.icons.rounded.Fingerprint
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Mic
@@ -43,6 +44,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -778,31 +780,31 @@ fun PrivacyShieldScreen(
             }
         }
 
-        // Risk Category Count Pills (3 groups)
+        // Risk Category Count Pills (Unified Threat Groups)
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 RiskPill(
-                    label = "🔴 Супераппы",
-                    count = state.superappsCount,
+                    label = "🔴 Критические",
+                    count = state.criticalAppsCount,
                     color = AppleRed
                 )
                 RiskPill(
-                    label = "🟡 Мессенджеры",
-                    count = state.messengersCount,
+                    label = "🟠 Высокий риск",
+                    count = state.highAppsCount,
                     color = AppleOrange
                 )
                 RiskPill(
-                    label = "🟢 Системные",
-                    count = state.systemAppsCount,
-                    color = AppleMintGreen
+                    label = "🔵 Умеренные",
+                    count = state.scannedApps.count { it.riskLevel == PrivacyRiskLevel.MEDIUM },
+                    color = AppleBlue
                 )
             }
         }
 
-        // Scanned Apps List
+        // Scanned Apps List (All threats audited: SMS/Notification, A11y, SuperApp, Phone/Mic, Geo, Overlay)
         if (state.scannedApps.isEmpty() && !state.isScanning) {
             item {
                 AppleGroupedCard {
@@ -820,7 +822,7 @@ fun PrivacyShieldScreen(
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
-                            text = "Подозрительных приложений со связкой Телефон + Микрофон не обнаружено.",
+                            text = "Уязвимостей в сторонних приложениях не обнаружено. Спящие и доверенные приложения скрыты.",
                             fontSize = 14.sp,
                             color = MaterialTheme.colorScheme.onSurface
                         )
@@ -831,8 +833,13 @@ fun PrivacyShieldScreen(
             items(state.scannedApps, key = { it.packageName }) { appRisk ->
                 AppRiskCardItem(
                     app = appRisk,
-                    onOpenSettings = {
-                        coachmarkApp = appRisk
+                    onOpenAction = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        viewModel.handleAppThreatAction(appRisk, context)
+                    },
+                    onTrustApp = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        viewModel.trustSuperApp(appRisk.packageName)
                     }
                 )
             }
@@ -881,6 +888,14 @@ fun PrivacyShieldScreen(
                 onOpenAppDetails = { pkg ->
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                     viewModel.openAppDetails(pkg)
+                },
+                onOpenDeepSleep = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    viewModel.openDeepSleepSettings()
+                },
+                onTrustApp = { pkg ->
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    viewModel.trustSuperApp(pkg)
                 }
             )
         }
@@ -892,11 +907,16 @@ fun PrivacyShieldScreen(
                 detectedVpnClient = state.detectedVpnClient,
                 selectedFormat = state.selectedVpnFormat,
                 isConfigCopied = state.isVpnConfigCopied,
+                isRoutingConfigured = state.isVpnRoutingConfigured,
                 copiedCount = state.copiedAppCount,
                 onSelectFormat = { viewModel.selectVpnFormat(it) },
                 onCopyConfig = {
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                     viewModel.copyVpnMaskingConfig(it)
+                },
+                onToggleRoutingConfigured = { configured ->
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    viewModel.toggleVpnRoutingConfigured(configured)
                 },
                 onShowGuide = { viewModel.showVpnGuide() },
                 onLaunchVpn = { viewModel.launchVpnClient(it) },
@@ -1318,7 +1338,8 @@ private fun RiskPill(
 @Composable
 private fun AppRiskCardItem(
     app: AppPrivacyRisk,
-    onOpenSettings: () -> Unit
+    onOpenAction: () -> Unit,
+    onTrustApp: (() -> Unit)? = null
 ) {
     AppleGroupedCard {
         Column(modifier = Modifier.padding(vertical = 12.dp)) {
@@ -1341,13 +1362,12 @@ private fun AppRiskCardItem(
                     )
                 }
 
-                // Category & Risk Badge
-                val (badgeColor, badgeText) = when {
-                    app.isDeepSleeping -> AppleMintGreen to "Глубокий сон"
-                    app.category == PrivacyCategory.SUPERAPP_SURVEILLANCE -> AppleRed to "Суперапп"
-                    app.category == PrivacyCategory.TRUSTED_MESSENGER -> AppleOrange to "Мессенджер"
-                    app.category == PrivacyCategory.AUDIO_ACCESS_APP -> AppleBlue to "Микрофон"
-                    else -> AppleMintGreen to "Системный"
+                // Risk Badge
+                val (badgeColor, badgeText) = when (app.riskLevel) {
+                    PrivacyRiskLevel.CRITICAL -> AppleRed to "Критический"
+                    PrivacyRiskLevel.HIGH -> AppleOrange to "Высокий"
+                    PrivacyRiskLevel.MEDIUM -> AppleBlue to "Умеренный"
+                    PrivacyRiskLevel.SAFE -> AppleMintGreen to "Безопасно"
                 }
 
                 Box(
@@ -1365,6 +1385,36 @@ private fun AppRiskCardItem(
                 }
             }
 
+            // Threat Badges
+            if (app.threatBadges.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    app.threatBadges.forEach { badge ->
+                        val bColor = when {
+                            badge.contains("СМС") || badge.contains("Спецвозможности") || badge.contains("Критич") -> AppleRed
+                            badge.contains("Инвентарь") || badge.contains("Оверлей") || badge.contains("Звонки") -> AppleOrange
+                            else -> AppleBlue
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(bColor.copy(alpha = 0.12f))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = badge,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = bColor
+                            )
+                        }
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = app.riskDescription,
@@ -1373,23 +1423,49 @@ private fun AppRiskCardItem(
                 lineHeight = 17.sp
             )
 
-            if (app.category != PrivacyCategory.SYSTEM_DIALER) {
-                Spacer(modifier = Modifier.height(10.dp))
-                AppleHairlineDivider()
-                Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(10.dp))
+            AppleHairlineDivider()
+            Spacer(modifier = Modifier.height(8.dp))
 
+            val actionText = when (app.primaryActionType) {
+                ru.antispam.app.privacy.AppThreatActionType.REVOKE_NOTIFICATION_LISTENER -> "Отключить доступ к СМС/шторке"
+                ru.antispam.app.privacy.AppThreatActionType.MANAGE_ACCESSIBILITY -> "Отключить спецвозможности"
+                ru.antispam.app.privacy.AppThreatActionType.PUT_IN_DEEP_SLEEP -> "В глубокий сон (заморозить)"
+                ru.antispam.app.privacy.AppThreatActionType.TRUST_APP -> "Добавить в доверенные"
+                ru.antispam.app.privacy.AppThreatActionType.MANAGE_PERMISSIONS -> "Отозвать разрешения"
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 Button(
-                    onClick = onOpenSettings,
+                    onClick = onOpenAction,
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                     shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.weight(1f)
                 ) {
                     Text(
-                        text = "Ограничить доступ к звонкам",
+                        text = actionText,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = AppleBlue
+                        color = AppleBlue,
+                        maxLines = 1
                     )
+                }
+
+                if (onTrustApp != null && (app.hasQueryAllPackages || app.riskLevel == PrivacyRiskLevel.MEDIUM)) {
+                    OutlinedButton(
+                        onClick = onTrustApp,
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text(
+                            text = "Доверять",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                        )
+                    }
                 }
             }
         }
@@ -1837,7 +1913,9 @@ private fun SuperAppAuditCard(
     highCount: Int,
     installedVpnClients: List<String>,
     isVpnInventoryExposed: Boolean,
-    onOpenAppDetails: (String) -> Unit
+    onOpenAppDetails: (String) -> Unit,
+    onOpenDeepSleep: () -> Unit = {},
+    onTrustApp: (String) -> Unit = {}
 ) {
     AppleGroupedCard {
         Column(
@@ -1888,6 +1966,24 @@ private fun SuperAppAuditCard(
             }
 
             Spacer(modifier = Modifier.height(12.dp))
+
+            // Explanation about QUERY_ALL_PACKAGES
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+                    .padding(10.dp)
+            ) {
+                Text(
+                    text = "ℹ️ Разрешение QUERY_ALL_PACKAGES выдается навсегда при установке и не отображается в списке обычных разрешений. Чтобы приложение перестало сканировать устройство, добавьте его в «Глубокий сон» (заморозка) или пометьте как доверенное.",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
+                    lineHeight = 15.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
 
             // VPN Exposure Warning Banner
             if (isVpnInventoryExposed) {
@@ -1944,13 +2040,6 @@ private fun SuperAppAuditCard(
                     profile.riskLevel == SuperAppRiskLevel.MEDIUM -> AppleBlue
                     else -> AppleMintGreen
                 }
-                val badgeText = when {
-                    profile.isDeepSleeping -> "Глубокий сон"
-                    profile.riskLevel == SuperAppRiskLevel.CRITICAL -> "СУПЕРАПП"
-                    profile.riskLevel == SuperAppRiskLevel.HIGH -> "ТРЕКЕР"
-                    profile.riskLevel == SuperAppRiskLevel.MEDIUM -> "УТИЛИТА"
-                    else -> "СИСТЕМА"
-                }
 
                 Row(
                     modifier = Modifier
@@ -1981,17 +2070,43 @@ private fun SuperAppAuditCard(
                         }
                     }
 
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
 
-                    TextButton(
-                        onClick = { onOpenAppDetails(profile.packageName) }
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "Ограничить",
-                            fontSize = 12.sp,
-                            color = AppleBlue,
-                            fontWeight = FontWeight.SemiBold
-                        )
+                        TextButton(
+                            onClick = onOpenDeepSleep
+                        ) {
+                            Text(
+                                text = "В сон",
+                                fontSize = 12.sp,
+                                color = AppleOrange,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                        TextButton(
+                            onClick = { onTrustApp(profile.packageName) }
+                        ) {
+                            Text(
+                                text = "Доверять",
+                                fontSize = 12.sp,
+                                color = AppleBlue,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                        IconButton(
+                            onClick = { onOpenAppDetails(profile.packageName) },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Security,
+                                contentDescription = "Инфо",
+                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -2005,9 +2120,11 @@ private fun VpnMaskingCard(
     detectedVpnClient: Pair<VpnClientFormat, String>?,
     selectedFormat: VpnClientFormat,
     isConfigCopied: Boolean,
+    isRoutingConfigured: Boolean,
     copiedCount: Int,
     onSelectFormat: (VpnClientFormat) -> Unit,
     onCopyConfig: (VpnClientFormat) -> Unit,
+    onToggleRoutingConfigured: (Boolean) -> Unit,
     onShowGuide: () -> Unit,
     onLaunchVpn: (VpnClientFormat) -> Unit,
     onOpenVpnSettings: () -> Unit
@@ -2055,6 +2172,47 @@ private fun VpnMaskingCard(
             }
 
             Spacer(modifier = Modifier.height(12.dp))
+
+            // Routing Configured Status Banner
+            if (isRoutingConfigured) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(AppleMintGreen.copy(alpha = 0.15f))
+                        .padding(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.CheckCircle,
+                            contentDescription = null,
+                            tint = AppleMintGreen,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Раздельное проксирование активно",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = AppleMintGreen
+                            )
+                            Text(
+                                text = "Российские сервисы идут в обход VPN. Угроза сканирования туннеля снята.",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                            )
+                        }
+                        TextButton(onClick = { onToggleRoutingConfigured(false) }) {
+                            Text(text = "Сброс", fontSize = 12.sp, color = AppleBlue)
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+            }
 
             // Explanation Banner
             Box(
@@ -2178,6 +2336,29 @@ private fun VpnMaskingCard(
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold
                 )
+            }
+
+            if (!isRoutingConfigured) {
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = { onToggleRoutingConfigured(true) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.DoneAll,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = AppleMintGreen
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Я настроил маршрутизацию в VPN",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(6.dp))

@@ -66,13 +66,35 @@ object SuperAppInspector {
     )
 
     /**
-     * Core AOSP / system packages.
+     * Core AOSP / Android OS and trusted OEM system packages.
      */
     val KNOWN_CORE_SYSTEM = setOf(
         "android",
         "com.android.systemui",
         "com.google.android.gms",
-        "com.google.android.packageinstaller"
+        "com.google.android.packageinstaller",
+        "com.google.android.contactkeys",
+        "com.android.keyverifier",
+        "com.google.android.keyverifier",
+        "com.samsung.android.oneconnect",
+        "com.samsung.android.voc",
+        "com.samsung.android.ardrawing",
+        "com.samsung.android.arillustration",
+        "com.samsung.android.aremoji",
+        "com.samsung.android.aremojieditor",
+        "com.google.android.apps.photos",
+        "com.sec.android.gallery3d",
+        "com.samsung.android.app.camera",
+        "com.sec.android.app.myfiles",
+        "com.samsung.android.honeyboard",
+        "com.google.android.inputmethod.latin",
+        "com.samsung.android.bixby.agent",
+        "com.samsung.android.app.routines",
+        "com.samsung.android.app.modes",
+        "com.microsoft.appmanager",
+        "com.google.android.projection.gearhead",
+        "com.sec.android.app.samsungapps",
+        "com.sec.android.app.launcher"
     )
 
     /**
@@ -134,19 +156,27 @@ object SuperAppInspector {
             )
         }
 
-        // 3. Core OS components
-        if (KNOWN_CORE_SYSTEM.contains(lowerPkg) || (isSystemApp && lowerPkg.startsWith("com.android."))) {
+        // 3. Core OS and trusted OEM system components (Samsung One UI, Google, Microsoft, AOSP)
+        val isVendorOrSystem = isSystemApp ||
+                lowerPkg.startsWith("com.samsung.") ||
+                lowerPkg.startsWith("com.sec.") ||
+                lowerPkg.startsWith("com.google.android.") ||
+                lowerPkg.startsWith("com.android.") ||
+                lowerPkg == "com.microsoft.appmanager" ||
+                lowerPkg in KNOWN_CORE_SYSTEM
+
+        if (isVendorOrSystem && lowerPkg !in KNOWN_SURVEILLANCE_SUPERAPPS) {
             return Triple(
                 SuperAppRiskLevel.SAFE,
                 SuperAppCategory.SYSTEM_COMPONENT,
-                "Системный компонент Android OS."
+                "Официальный системный компонент Android OS / Samsung One UI."
             )
         }
 
         // 4. Pre-installed OEM system apps
         if (isSystemApp) {
             return Triple(
-                SuperAppRiskLevel.MEDIUM,
+                SuperAppRiskLevel.SAFE,
                 SuperAppCategory.SYSTEM_COMPONENT,
                 "Системное приложение производителя устройства."
             )
@@ -228,7 +258,7 @@ object SuperAppInspector {
 
                 val appInfo = pkg.applicationInfo
                 val isSystem = if (appInfo != null) {
-                    (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+                    (appInfo.flags and (ApplicationInfo.FLAG_SYSTEM or ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) != 0
                 } else false
 
                 val appName = if (appInfo != null) {
@@ -241,12 +271,27 @@ object SuperAppInspector {
 
                 val (riskLevel, category, riskDesc) = classifyRisk(pkgName, requestedPerms, isSystem)
                 val isDeepSleeping = AppDormancyHelper.isAppInDeepSleep(context, pkgName)
-                val finalRiskLevel = if (isDeepSleeping) SuperAppRiskLevel.SAFE else riskLevel
-                val finalCategory = if (isDeepSleeping) SuperAppCategory.REGULAR_APP else category
-                val finalDesc = if (isDeepSleeping) {
-                    "Приложение находится в глубоком сне (заморожено системой). Фоновое сканирование установленных приложений заблокировано."
-                } else {
-                    riskDesc
+                val isTrusted = TrustedAppManager.isSuperAppTrusted(context, pkgName)
+
+                // Exclude safe system components completely: prevents cluttering user UI with Samsung/Google apps
+                if (riskLevel == SuperAppRiskLevel.SAFE && !isTrusted && !isDeepSleeping) {
+                    continue
+                }
+
+                val finalRiskLevel = when {
+                    isDeepSleeping -> SuperAppRiskLevel.SAFE
+                    isTrusted -> SuperAppRiskLevel.SAFE
+                    else -> riskLevel
+                }
+                val finalCategory = when {
+                    isDeepSleeping -> SuperAppCategory.REGULAR_APP
+                    isTrusted -> SuperAppCategory.REGULAR_APP
+                    else -> category
+                }
+                val finalDesc = when {
+                    isDeepSleeping -> "Приложение находится в глубоком сне (заморожено системой). Фоновое сканирование установленных приложений заблокировано."
+                    isTrusted -> "Приложение добавлено вами в доверенные. Исключено из угроз."
+                    else -> riskDesc
                 }
                 val capabilities = buildCapabilities(requestedPerms, hasVpnInstalled)
 
@@ -260,7 +305,8 @@ object SuperAppInspector {
                         category = finalCategory,
                         riskDescription = finalDesc,
                         detectedCapabilities = capabilities,
-                        isDeepSleeping = isDeepSleeping
+                        isDeepSleeping = isDeepSleeping,
+                        isTrusted = isTrusted
                     )
                 )
             }

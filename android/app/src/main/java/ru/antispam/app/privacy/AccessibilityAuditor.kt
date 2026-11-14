@@ -45,6 +45,9 @@ object AccessibilityAuditor {
      */
     val KNOWN_OEM_ACCESSIBILITY = setOf(
         "com.samsung.accessibility",
+        "com.samsung.android.honeyboard",
+        "com.sec.android.app.launcher",
+        "com.samsung.android.app.modes",
         "com.huawei.accessibility",
         "com.miui.accessibility",
         "com.oppo.accessibility"

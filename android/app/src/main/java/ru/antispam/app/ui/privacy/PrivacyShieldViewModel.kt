@@ -2,6 +2,9 @@ package ru.antispam.app.ui.privacy
 
 import android.app.Application
 import android.content.Context
+import android.content.Intent
+import android.provider.Settings
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
@@ -99,6 +102,7 @@ data class PrivacyShieldUiState(
     val superAppHighCount: Int = 0,
     val installedVpnClients: List<String> = emptyList(),
     val isVpnInventoryExposed: Boolean = false,
+    val isVpnRoutingConfigured: Boolean = false,
     val installedTargetApps: List<MaskingTargetApp> = emptyList(),
     val detectedVpnClient: Pair<VpnClientFormat, String>? = null,
     val selectedVpnFormat: VpnClientFormat = VpnClientFormat.AMNEZIA_VPN,
@@ -139,7 +143,8 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
             isClipboardGuardEnabled = prefs.getBoolean(ClipboardGuardManager.KEY_CLIPBOARD_GUARD_ENABLED, true),
             shreddedOtpCount = ClipboardGuardManager.getShreddedOtpCount(application),
             isLinkSanitizerEnabled = ClipboardGuardManager.isLinkSanitizerEnabled(application),
-            sanitizedLinksCount = ClipboardGuardManager.getSanitizedLinksCount(application)
+            sanitizedLinksCount = ClipboardGuardManager.getSanitizedLinksCount(application),
+            isVpnRoutingConfigured = prefs.getBoolean(VpnMaskingHelper.KEY_VPN_ROUTING_CONFIGURED, false)
         )
     )
     val uiState: StateFlow<PrivacyShieldUiState> = _uiState.asStateFlow()
@@ -266,6 +271,9 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
             // Phase 12.3: Audit cellular 2G downgrade attacks and null cipher
             val cellularReport = CellularSecurityAuditor.auditCellularSecurity(getApplication())
 
+            val isRoutingConfigured = VpnMaskingHelper.isVpnRoutingConfigured(getApplication())
+            val isVpnExposed = !isRoutingConfigured && superAppAudit.isVpnInventoryExposed
+
             val auditInput = PrivacyAuditInput(
                 isRegistryUpToDate = isRegistryFresh,
                 isMicGuardEnabled = _uiState.value.isMicGuardEnabled,
@@ -273,7 +281,7 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
                 isClipboardGuardEnabled = _uiState.value.isClipboardGuardEnabled,
                 hasMitmRootCa = certAudit.criticalCount > 0,
                 hasCriticalAccessibility = criticalAccess > 0,
-                hasVpnInventoryExposed = superAppAudit.isVpnInventoryExposed,
+                hasVpnInventoryExposed = isVpnExposed,
                 hasStealthGeoTrackers = triangulationAudit.criticalCount > 0,
                 hasRootOrHooks = envReport.hasPrivilegeOrHookExposure,
                 hasCallForwarding = forwardingReport.hasActiveForwarding,
@@ -298,7 +306,8 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
                     superAppCriticalCount = superAppAudit.criticalCount,
                     superAppHighCount = superAppAudit.highCount,
                     installedVpnClients = superAppAudit.installedVpnClients,
-                    isVpnInventoryExposed = superAppAudit.isVpnInventoryExposed,
+                    isVpnInventoryExposed = isVpnExposed,
+                    isVpnRoutingConfigured = isRoutingConfigured,
                     installedTargetApps = targetApps,
                     detectedVpnClient = detectedVpn,
                     selectedVpnFormat = detectedVpn?.first ?: it.selectedVpnFormat,
@@ -808,6 +817,62 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
                 _uiState.update { it.copy(pendingRevokePkg = null, pendingRevokeAppName = null) }
             }
             refreshScan()
+        }
+    }
+
+    /**
+     * Toggles whether user has configured VPN routing / bypass for Russian apps and superapps.
+     * When configured, eliminates the SUPERAPP_VPN_EXPOSED vulnerability penalty.
+     */
+    fun toggleVpnRoutingConfigured(configured: Boolean) {
+        VpnMaskingHelper.setVpnRoutingConfigured(getApplication(), configured)
+        _uiState.update { it.copy(isVpnRoutingConfigured = configured) }
+        refreshScan(force = true)
+    }
+
+    /**
+     * Whitelists a SuperApp with QUERY_ALL_PACKAGES so it is exempted from security penalties.
+     */
+    fun trustSuperApp(packageName: String) {
+        TrustedAppManager.setSuperAppTrusted(getApplication(), packageName, isTrusted = true)
+        refreshScan(force = true)
+    }
+
+    /**
+     * Opens system battery optimization settings (Samsung One UI deep sleep / unrestricted).
+     */
+    fun openDeepSleepSettings() {
+        val context = getApplication<Application>()
+        val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        try {
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            Log.e("PrivacyShieldViewModel", "Failed to open deep sleep settings: ${e.message}")
+        }
+    }
+
+    /**
+     * Performs targeted action for an app threat detected in the unified audit.
+     */
+    fun handleAppThreatAction(app: AppPrivacyRisk, context: Context) {
+        when (app.primaryActionType) {
+            ru.antispam.app.privacy.AppThreatActionType.REVOKE_NOTIFICATION_LISTENER -> {
+                openNotificationListenerSettings()
+            }
+            ru.antispam.app.privacy.AppThreatActionType.MANAGE_ACCESSIBILITY -> {
+                openAccessibilitySettings()
+            }
+            ru.antispam.app.privacy.AppThreatActionType.PUT_IN_DEEP_SLEEP -> {
+                openDeepSleepSettings()
+            }
+            ru.antispam.app.privacy.AppThreatActionType.TRUST_APP -> {
+                trustSuperApp(app.packageName)
+            }
+            ru.antispam.app.privacy.AppThreatActionType.MANAGE_PERMISSIONS -> {
+                preparePermissionRevocation(app.appName, app.packageName)
+            }
         }
     }
 

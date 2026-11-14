@@ -36,6 +36,7 @@ object NotificationListenerAuditor {
         "com.google.android.projection.gearhead",
         "com.sec.android.app.launcher",
         "com.samsung.android.app.routines",
+        "com.samsung.android.app.modes",
         "com.samsung.android.smartmirroring"
     )
 
@@ -45,6 +46,10 @@ object NotificationListenerAuditor {
      */
     val KNOWN_WEARABLE_COMPANIONS = setOf(
         "com.samsung.android.app.watchmanager",
+        "com.samsung.android.waterplugin",
+        "com.samsung.android.neatplugin",
+        "com.samsung.android.modenplugin",
+        "com.samsung.android.gearnplugin",
         "com.samsung.android.geargplugin",
         "com.samsung.android.gearrplugin",
         "com.samsung.wearable.fit3plugin",
@@ -96,12 +101,15 @@ object NotificationListenerAuditor {
 
         // 1. Core Android system service / OEM trusted system service
         if (TRUSTED_SYSTEM_PACKAGES.contains(lowerPkg) ||
+            TrustedAppManager.KNOWN_SYSTEM_OEM_PACKAGES.contains(lowerPkg) ||
             lowerPkg.startsWith("com.android.") ||
-            lowerPkg.startsWith("com.sec.android.app.launcher") ||
-            lowerPkg.startsWith("com.samsung.android.app.routines") ||
-            lowerPkg.startsWith("com.samsung.android.smartmirroring") ||
+            lowerPkg.startsWith("com.google.android.gms") ||
             lowerPkg == "com.microsoft.appmanager" ||
-            lowerPkg == "com.google.android.projection.gearhead"
+            lowerPkg == "com.google.android.projection.gearhead" ||
+            lowerPkg == "com.sec.android.app.launcher" ||
+            lowerPkg == "com.samsung.android.app.routines" ||
+            lowerPkg == "com.samsung.android.app.modes" ||
+            lowerPkg == "com.samsung.android.smartmirroring"
         ) {
             return Pair(
                 ListenerRiskLevel.SAFE,
@@ -111,6 +119,7 @@ object NotificationListenerAuditor {
 
         // 2. Verified smartwatch / fitness companion app
         if (KNOWN_WEARABLE_COMPANIONS.contains(lowerPkg) ||
+            TrustedAppManager.KNOWN_WEARABLE_COMPANIONS.contains(lowerPkg) ||
             lowerPkg.contains("wearable") ||
             lowerPkg.contains("watch") ||
             (lowerPkg.contains("gear") && lowerPkg.contains("plugin")) ||

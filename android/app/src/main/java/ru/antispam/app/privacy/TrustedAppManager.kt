@@ -24,6 +24,7 @@ object TrustedAppManager {
     const val PREFS_NAME = "antispam_privacy_prefs"
     const val KEY_TRUSTED_NOTIFICATION_LISTENERS = "trusted_notification_listeners"
     const val KEY_TRUSTED_ACCESSIBILITY_SERVICES = "trusted_accessibility_services"
+    const val KEY_TRUSTED_SUPERAPPS = "trusted_superapps"
 
     /**
      * Recognized password managers and autofill accessibility services.
@@ -39,26 +40,72 @@ object TrustedAppManager {
         "com.enpass.app",
         "com.dashlane",
         "com.safeincloud",
-        "com.nordpass.android"
+        "com.safeincloud.free",
+        "com.nordpass.android",
+        "com.lastpass.lpandroid",
+        "com.keepersecurity.android",
+        "com.samsung.android.samsungpass",
+        "com.samsung.android.samsungpassautofill",
+        "com.samsung.android.authfw",
+        "com.kaspersky.passwordmanager",
+        "com.yandex.passwords",
+        "com.google.android.gms"
     )
 
     /**
-     * Recognized wearable companions that mirror notifications to external accessories.
+     * Recognized core system and OEM services (Samsung One UI, Microsoft Link, Android Auto)
+     * that legitimately access system notification hooks and system UI.
+     */
+    val KNOWN_SYSTEM_OEM_PACKAGES = setOf(
+        "android",
+        "com.android.systemui",
+        "com.google.android.gms",
+        "com.microsoft.appmanager",
+        "com.google.android.projection.gearhead",
+        "com.sec.android.app.launcher",
+        "com.samsung.android.app.modes",
+        "com.samsung.android.app.routines",
+        "com.samsung.android.smartmirroring"
+    )
+
+    /**
+     * Recognized wearable companions, car integration and official system accessories
+     * that legitimately mirror notifications or sync with external hardware.
      */
     val KNOWN_WEARABLE_COMPANIONS = setOf(
+        // Samsung Wearables, Plugins and One UI
         "com.samsung.android.app.watchmanager",
         "com.samsung.android.geargplugin",
+        "com.samsung.android.gearrplugin",
+        "com.samsung.android.gearnplugin",
+        "com.samsung.android.waterplugin",
+        "com.samsung.android.neatplugin",
+        "com.samsung.android.modenplugin",
+        "com.samsung.wearable.fit3plugin",
+        "com.samsung.android.wearable.fit3plugin",
+        "com.samsung.accessory",
+        "com.samsung.accessory.wmanager",
+        "com.google.android.wearable.app",
+        // Huawei & Honor
         "com.huawei.health",
+        "com.huawei.health.oversea",
+        "com.honor.health",
+        // Xiaomi, Amazfit & Zepp
         "com.mi.health",
         "com.huami.midong",
         "com.xiaomi.wearable",
+        "com.xiaomi.hm.health",
+        "com.zepp.main",
+        // Garmin, Fitbit & Polar
         "com.garmin.android.apps.connectmobile",
         "com.fitbit.FitbitMobile",
         "com.polar.polarflow",
+        // Oppo, Vivo & others
         "com.oppo.wearable",
         "com.heytap.wearable.health",
-        "com.google.android.wearable.app",
-        "com.honor.health",
+        "com.suunto.companion",
+        "com.withings.wiscale2",
+        "com.coros.android",
         "com.fitpro.app"
     )
 
@@ -143,12 +190,45 @@ object TrustedAppManager {
     }
 
     /**
+     * Returns the set of user-whitelisted SuperApp package names.
+     */
+    fun getTrustedSuperApps(context: Context): Set<String> {
+        val prefs = getPrefs(context)
+        return prefs.getStringSet(KEY_TRUSTED_SUPERAPPS, emptySet())
+            ?.map { it.lowercase() }
+            ?.toSet() ?: emptySet()
+    }
+
+    /**
+     * Adds or removes an app from the trusted SuperApp whitelist.
+     */
+    fun setSuperAppTrusted(context: Context, packageName: String, isTrusted: Boolean) {
+        val prefs = getPrefs(context)
+        val current = prefs.getStringSet(KEY_TRUSTED_SUPERAPPS, emptySet())
+            ?.toMutableSet() ?: mutableSetOf()
+
+        val normalized = packageName.lowercase().trim()
+        if (isTrusted) {
+            current.add(normalized)
+        } else {
+            current.remove(normalized)
+        }
+        prefs.edit().putStringSet(KEY_TRUSTED_SUPERAPPS, current).apply()
+    }
+
+    fun isSuperAppTrusted(context: Context, packageName: String): Boolean {
+        val trusted = getTrustedSuperApps(context)
+        return trusted.contains(packageName.lowercase().trim())
+    }
+
+    /**
      * Clears all trusted apps.
      */
     fun clearAll(context: Context) {
         getPrefs(context).edit()
             .remove(KEY_TRUSTED_NOTIFICATION_LISTENERS)
             .remove(KEY_TRUSTED_ACCESSIBILITY_SERVICES)
+            .remove(KEY_TRUSTED_SUPERAPPS)
             .apply()
     }
 }

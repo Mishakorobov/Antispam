@@ -40,9 +40,24 @@ enum class VpnClientFormat(val displayName: String, val appPackage: String?) {
 object VpnMaskingHelper {
 
     private const val TAG = "VpnMaskingHelper"
+    const val PREFS_NAME = "antispam_privacy_prefs"
+    const val KEY_VPN_ROUTING_CONFIGURED = "vpn_routing_configured"
+
+    fun isVpnRoutingConfigured(context: Context): Boolean {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_VPN_ROUTING_CONFIGURED, false)
+    }
+
+    fun setVpnRoutingConfigured(context: Context, configured: Boolean) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_VPN_ROUTING_CONFIGURED, configured)
+            .apply()
+    }
 
     /**
-     * Scans installed packages and returns the subset of Russian target services present on the device.
+     * Scans installed packages and returns the subset of Russian target services and
+     * VPN-catalog-querying applications present on the device.
      */
     fun getInstalledTargetApps(context: Context): List<MaskingTargetApp> {
         val pm = context.packageManager
@@ -66,18 +81,25 @@ object VpnMaskingHelper {
             }
         }
 
-        // 2. Dynamically scan all installed packages for additional Russian services (Goskey, Yandex Pay, etc.)
+        // 2. Dynamically scan all installed packages for additional Russian services & VPN catalog trackers
         try {
-            val allPackages = pm.getInstalledPackages(0)
+            val allPackages = pm.getInstalledPackages(PackageManager.GET_PERMISSIONS)
             for (pkg in allPackages) {
                 val pkgName = pkg.packageName.lowercase()
                 if (installedApps.containsKey(pkg.packageName)) continue
                 if (pkgName.startsWith("ru.antispam.")) continue
 
+                val appInfo = pkg.applicationInfo ?: continue
+                val isSystem = (appInfo.flags and (android.content.pm.ApplicationInfo.FLAG_SYSTEM or android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) != 0
+                val requestedPerms = pkg.requestedPermissions?.toSet() ?: emptySet()
+                val hasQueryAll = SuperAppInspector.PERM_QUERY_ALL_PACKAGES in requestedPerms
+
                 val isRussianService = pkgName.startsWith("ru.") ||
+                        pkgName.startsWith("su.") ||
                         pkgName.contains("gosuslugi") ||
                         pkgName.contains("goskey") ||
                         pkgName.contains(".yandex.") ||
+                        pkgName.contains("yandex") ||
                         pkgName.contains("sber") ||
                         pkgName.contains("tcsbank") ||
                         pkgName.contains("tinkoff") ||
@@ -87,15 +109,44 @@ object VpnMaskingHelper {
                         pkgName.contains("gazprombank") ||
                         pkgName.contains("ozon") ||
                         pkgName.contains("avito") ||
-                        pkgName.contains("mirpay")
+                        pkgName.contains("mirpay") ||
+                        pkgName.contains("nspk") ||
+                        pkgName.contains("beeline") ||
+                        pkgName.contains("megafon") ||
+                        pkgName.contains("mts.") ||
+                        pkgName.contains("tele2") ||
+                        pkgName.contains("rostelecom") ||
+                        pkgName.contains("yota") ||
+                        pkgName.contains("drom") ||
+                        pkgName.contains("auto.ru") ||
+                        pkgName.contains("cian") ||
+                        pkgName.contains("hh.ru") ||
+                        pkgName.contains("headhunter") ||
+                        pkgName.contains("rutube") ||
+                        pkgName.contains("vkontakte") ||
+                        pkgName.contains("vk.store") ||
+                        pkgName.contains("vk.max") ||
+                        pkgName.contains("my.mail") ||
+                        pkgName.contains("sovcombank") ||
+                        pkgName.contains("openbank") ||
+                        pkgName.contains("raiffeisen") ||
+                        pkgName.contains("psbank") ||
+                        pkgName.contains("pochtabank")
 
-                if (isRussianService) {
-                    val appInfo = pkg.applicationInfo ?: continue
+                // If Russian service OR non-system package with QUERY_ALL_PACKAGES (potential VPN tracker)
+                if (isRussianService || (!isSystem && hasQueryAll)) {
                     val label = try { pm.getApplicationLabel(appInfo).toString() } catch (_: Exception) { pkg.packageName }
+                    val category = when {
+                        !isSystem && hasQueryAll -> RussianAppCategory.SUPERAPP_AND_TELECOM
+                        pkgName.contains("bank") || pkgName.contains("sber") || pkgName.contains("tcs") || pkgName.contains("vtb") || pkgName.contains("pay") -> RussianAppCategory.BANKING
+                        pkgName.contains("gos") -> RussianAppCategory.GOVERNMENT
+                        pkgName.contains("beeline") || pkgName.contains("megafon") || pkgName.contains("mts") || pkgName.contains("tele2") || pkgName.contains("yota") -> RussianAppCategory.SUPERAPP_AND_TELECOM
+                        else -> RussianAppCategory.MARKETPLACE_AND_MEDIA
+                    }
                     installedApps[pkg.packageName] = MaskingTargetApp(
                         packageName = pkg.packageName,
                         appName = if (label.isNotBlank()) label else pkg.packageName,
-                        category = RussianAppCategory.BANKING,
+                        category = category,
                         isInstalled = true
                     )
                 }
@@ -124,9 +175,13 @@ object VpnMaskingHelper {
             VpnClientFormat.V2RAYTUN -> {
                 buildString {
                     appendLine("# ========================================================")
-                    appendLine("# Правила раздельного проксирования для v2RayTun")
-                    appendLine("# Список российских сервисов для прямого обхода (Bypass / Direct):")
+                    appendLine("# Правила прямого обхода (Bypass / Direct) для v2RayTun")
                     appendLine("# ========================================================")
+                    appendLine("# Инструкция для v2RayTun:")
+                    appendLine("# 1. Откройте v2RayTun -> Настройки (внизу справа) -> Маршрутизация.")
+                    appendLine("# 2. Нажмите «Маршрутизация выбранных приложений».")
+                    appendLine("# 3. Включите режим «Обход выбранных приложений» (Bypass).")
+                    appendLine("# 4. Отметьте следующие сервисы (банки, Госуслуги, супераппы):")
                     sortedPackages.forEach { pkg ->
                         appendLine(pkg)
                     }
@@ -189,6 +244,7 @@ object VpnMaskingHelper {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
         val clip = ClipData.newPlainText("VPN Split Tunnel Rules", config)
         clipboard?.setPrimaryClip(clip)
+        setVpnRoutingConfigured(context, true)
 
         return packages.size
     }
