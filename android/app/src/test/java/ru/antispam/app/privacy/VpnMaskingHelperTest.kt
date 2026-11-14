@@ -68,6 +68,7 @@ class VpnMaskingHelperTest {
 
     @Test
     fun test_generateSplitTunnelConfig_emptyInputReturnsEmpty() {
+        assertEquals("", VpnMaskingHelper.generateSplitTunnelConfig(emptyList(), VpnClientFormat.V2RAYTUN))
         assertEquals("", VpnMaskingHelper.generateSplitTunnelConfig(emptyList(), VpnClientFormat.AMNEZIA_VPN))
         assertEquals("", VpnMaskingHelper.generateSplitTunnelConfig(emptyList(), VpnClientFormat.V2RAYNG_NEKOBOX))
         assertEquals("", VpnMaskingHelper.generateSplitTunnelConfig(emptyList(), VpnClientFormat.RAW_PACKAGE_LIST))
@@ -75,6 +76,10 @@ class VpnMaskingHelperTest {
 
     @Test
     fun test_getSetupGuide_returnsValidSteps() {
+        val v2rayTunGuide = VpnMaskingHelper.getSetupGuide(VpnClientFormat.V2RAYTUN)
+        assertEquals(5, v2rayTunGuide.size)
+        assertTrue(v2rayTunGuide[0].contains("v2RayTun"))
+
         val amneziaGuide = VpnMaskingHelper.getSetupGuide(VpnClientFormat.AMNEZIA_VPN)
         assertEquals(5, amneziaGuide.size)
         assertTrue(amneziaGuide[0].contains("AmneziaVPN"))

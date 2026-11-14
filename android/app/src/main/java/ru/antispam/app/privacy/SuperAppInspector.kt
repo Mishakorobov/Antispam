@@ -79,9 +79,11 @@ object SuperAppInspector {
      * Registry of known VPN clients and circumvention tools that superapps target for cataloging.
      */
     val KNOWN_VPN_PACKAGES = mapOf(
+        "com.v2raytun.android" to "v2RayTun",
         "org.amnezia.vpn" to "Amnezia VPN",
         "com.v2ray.ang" to "v2rayNG",
         "moe.nb4a" to "NekoBox",
+        "io.github.hiddify.client" to "Hiddify",
         "org.outline.android.client" to "Outline VPN",
         "com.adguard.android" to "AdGuard",
         "ch.protonvpn.android" to "Proton VPN",

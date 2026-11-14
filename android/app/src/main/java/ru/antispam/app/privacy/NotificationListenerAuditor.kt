@@ -31,7 +31,12 @@ object NotificationListenerAuditor {
         "com.android.systemui",
         "com.google.android.gms",
         "com.google.android.wearable.app",
-        "com.android.server.telecom"
+        "com.android.server.telecom",
+        "com.microsoft.appmanager",
+        "com.google.android.projection.gearhead",
+        "com.sec.android.app.launcher",
+        "com.samsung.android.app.routines",
+        "com.samsung.android.smartmirroring"
     )
 
     /**
@@ -41,6 +46,9 @@ object NotificationListenerAuditor {
     val KNOWN_WEARABLE_COMPANIONS = setOf(
         "com.samsung.android.app.watchmanager",
         "com.samsung.android.geargplugin",
+        "com.samsung.android.gearrplugin",
+        "com.samsung.wearable.fit3plugin",
+        "com.samsung.android.wearable.fit3plugin",
         "com.huawei.health",
         "com.mi.health",
         "com.huami.midong",
@@ -86,16 +94,29 @@ object NotificationListenerAuditor {
     fun classifyRisk(packageName: String, isSystemApp: Boolean): Pair<ListenerRiskLevel, String> {
         val lowerPkg = packageName.lowercase()
 
-        // 1. Core Android system service
-        if (isSystemApp && (TRUSTED_SYSTEM_PACKAGES.contains(lowerPkg) || lowerPkg.startsWith("com.android."))) {
+        // 1. Core Android system service / OEM trusted system service
+        if (TRUSTED_SYSTEM_PACKAGES.contains(lowerPkg) ||
+            lowerPkg.startsWith("com.android.") ||
+            lowerPkg.startsWith("com.sec.android.app.launcher") ||
+            lowerPkg.startsWith("com.samsung.android.app.routines") ||
+            lowerPkg.startsWith("com.samsung.android.smartmirroring") ||
+            lowerPkg == "com.microsoft.appmanager" ||
+            lowerPkg == "com.google.android.projection.gearhead"
+        ) {
             return Pair(
                 ListenerRiskLevel.SAFE,
-                "Системный компонент Android OS. Доступ к шторке безопасен."
+                "Официальный системный компонент (Samsung / Google / Microsoft). Доступ к шторке безопасен."
             )
         }
 
         // 2. Verified smartwatch / fitness companion app
-        if (KNOWN_WEARABLE_COMPANIONS.contains(lowerPkg)) {
+        if (KNOWN_WEARABLE_COMPANIONS.contains(lowerPkg) ||
+            lowerPkg.contains("wearable") ||
+            lowerPkg.contains("watch") ||
+            (lowerPkg.contains("gear") && lowerPkg.contains("plugin")) ||
+            lowerPkg.contains("fit3") ||
+            lowerPkg.contains("health")
+        ) {
             return Pair(
                 ListenerRiskLevel.MEDIUM,
                 "Приложение для носимых устройств (умные часы/браслет). Пересылает уведомления на аксессуар."
@@ -104,6 +125,15 @@ object NotificationListenerAuditor {
 
         // 3. System app from vendor
         if (isSystemApp) {
+            if (lowerPkg.startsWith("com.google.android.") ||
+                lowerPkg.startsWith("com.samsung.") ||
+                lowerPkg.startsWith("com.sec.")
+            ) {
+                return Pair(
+                    ListenerRiskLevel.SAFE,
+                    "Системный компонент платформы. Доступ к шторке безопасен."
+                )
+            }
             return Pair(
                 ListenerRiskLevel.MEDIUM,
                 "Предустановленное системное приложение производителя."
@@ -141,7 +171,7 @@ object NotificationListenerAuditor {
             val isTrusted = trustedPackages.contains(pkgName.lowercase().trim())
             try {
                 val appInfo = pm.getApplicationInfo(pkgName, 0)
-                val isSystem = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+                val isSystem = (appInfo.flags and (ApplicationInfo.FLAG_SYSTEM or ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) != 0
                 val appName = pm.getApplicationLabel(appInfo).toString()
                 val (riskLevel, riskDesc) = classifyRisk(pkgName, isSystem)
 

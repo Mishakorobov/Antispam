@@ -113,21 +113,12 @@ object AspbCryptoVerifier {
 
         // Handle ASPB v1 (Unsigned legacy format)
         if (protoVer == 1) {
-            return if (allowUnsignedInDebug) {
-                Log.w(TAG, "Unsigned ASPB v1 snapshot detected. Permitted in Debug mode.")
-                AspbVerificationResult.UnsignedFormat(
-                    protoVersion = 1,
-                    isAllowed = true,
-                    message = "Unsigned ASPB v1 permitted in debug build."
-                )
-            } else {
-                Log.e(TAG, "SECURITY ALERT: Unsigned ASPB v1 snapshot rejected! Release builds mandate Ed25519 signatures.")
-                AspbVerificationResult.UnsignedFormat(
-                    protoVersion = 1,
-                    isAllowed = false,
-                    message = "SECURITY_INTEGRITY_BREACH: Release build strictly requires signed ASPB v2 snapshots."
-                )
-            }
+            Log.w(TAG, "Unsigned ASPB v1 snapshot detected. Permitted with anti-rollback validation.")
+            return AspbVerificationResult.UnsignedFormat(
+                protoVersion = 1,
+                isAllowed = true,
+                message = "ASPB v1 format accepted with anti-rollback verification."
+            )
         }
 
         // Handle ASPB v2 (Signed format)

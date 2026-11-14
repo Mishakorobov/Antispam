@@ -115,6 +115,8 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         callLogViewModel.refreshData()
         privacyViewModel.checkPendingRevocationOnResume()
+        privacyViewModel.refreshScan()
+        settingsViewModel.loadSettings()
     }
 
     private fun requestCallScreeningRole() {

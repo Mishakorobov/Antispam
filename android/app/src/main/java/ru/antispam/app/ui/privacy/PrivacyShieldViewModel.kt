@@ -12,6 +12,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ru.antispam.app.data.local.AppDatabase
 import ru.antispam.app.data.local.entity.VaultCallRecordEntity
+import ru.antispam.app.data.repository.SyncRepository
+import ru.antispam.app.worker.SyncPoolsWorker
 import ru.antispam.app.privacy.AppPrivacyRisk
 import ru.antispam.app.privacy.MicGuardService
 import ru.antispam.app.privacy.MicJammerManager
@@ -302,7 +304,16 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
     fun resolveSecurityIssue(issue: SecurityIssue) {
         when (issue.type) {
             SecurityIssueType.REGISTRY_OUTDATED -> {
-                refreshScan()
+                viewModelScope.launch(Dispatchers.IO) {
+                    try {
+                        val repository = SyncRepository(db = db, context = getApplication())
+                        val deviceHash = SyncPoolsWorker.getOrCreateDeviceHash(getApplication())
+                        repository.synchronize(deviceHash)
+                    } catch (e: Exception) {
+                        android.util.Log.e("PrivacyShieldVM", "Failed to update registry: ${e.message}")
+                    }
+                    refreshScan()
+                }
             }
             SecurityIssueType.MIC_GUARD_DISABLED -> {
                 toggleMicGuard(true)

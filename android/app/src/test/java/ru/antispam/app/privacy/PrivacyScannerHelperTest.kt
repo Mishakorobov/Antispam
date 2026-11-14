@@ -151,4 +151,38 @@ class PrivacyScannerHelperTest {
         assertEquals(PrivacyRiskLevel.SAFE, risk.riskLevel)
         assertEquals(PrivacyCategory.SYSTEM_DIALER, risk.category)
     }
+
+    @Test
+    fun testClassifyRisk_PreinstalledGooglePhotosIsNotSuperapp() {
+        // Pre-installed apps like Google Photos must NEVER be labeled SUPERAPP_SURVEILLANCE
+        val risk = PrivacyScannerHelper.classifyRisk(
+            appName = "Фото",
+            packageName = "com.google.android.apps.photos",
+            hasPhoneState = true,
+            hasRecordAudio = true,
+            hasCallLog = false,
+            hasAccessibility = false,
+            isSystem = true
+        )
+
+        assertEquals(PrivacyRiskLevel.SAFE, risk.riskLevel)
+        assertEquals(PrivacyCategory.SYSTEM_DIALER, risk.category)
+        assertFalse(risk.category == PrivacyCategory.SUPERAPP_SURVEILLANCE)
+    }
+
+    @Test
+    fun testClassifyRisk_AndroidAutoIsSafe() {
+        val risk = PrivacyScannerHelper.classifyRisk(
+            appName = "Android Auto",
+            packageName = "com.google.android.projection.gearhead",
+            hasPhoneState = true,
+            hasRecordAudio = true,
+            hasCallLog = true,
+            hasAccessibility = false,
+            isSystem = true
+        )
+
+        assertEquals(PrivacyRiskLevel.SAFE, risk.riskLevel)
+        assertEquals(PrivacyCategory.SYSTEM_DIALER, risk.category)
+    }
 }

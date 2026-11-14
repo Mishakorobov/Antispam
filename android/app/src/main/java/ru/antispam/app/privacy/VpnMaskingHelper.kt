@@ -15,8 +15,9 @@ import ru.antispam.app.privacy.model.RussianAppRegistry
  * Format of the split tunneling / bypass export for various VPN clients.
  */
 enum class VpnClientFormat(val displayName: String, val appPackage: String?) {
-    AMNEZIA_VPN("AmneziaVPN", "org.amnezia.vpn"),
+    V2RAYTUN("v2RayTun", "com.v2raytun.android"),
     V2RAYNG_NEKOBOX("v2rayNG / NekoBox", "com.v2ray.ang"),
+    AMNEZIA_VPN("AmneziaVPN", "org.amnezia.vpn"),
     RAW_PACKAGE_LIST("Список пакетов (Plain Text)", null)
 }
 
@@ -83,6 +84,18 @@ object VpnMaskingHelper {
         val sortedPackages = targetPackageNames.distinct().sorted()
 
         return when (format) {
+            VpnClientFormat.V2RAYTUN -> {
+                buildString {
+                    appendLine("# ========================================================")
+                    appendLine("# Правила раздельного проксирования для v2RayTun")
+                    appendLine("# Список российских сервисов для прямого обхода (Bypass / Direct):")
+                    appendLine("# ========================================================")
+                    sortedPackages.forEach { pkg ->
+                        appendLine(pkg)
+                    }
+                }
+            }
+
             VpnClientFormat.AMNEZIA_VPN -> {
                 buildString {
                     appendLine("# ========================================================")
@@ -148,6 +161,14 @@ object VpnMaskingHelper {
      */
     fun getSetupGuide(format: VpnClientFormat): List<String> {
         return when (format) {
+            VpnClientFormat.V2RAYTUN -> listOf(
+                "1. Откройте v2RayTun и перейдите в «Настройки» (иконка шестеренки в правом верхнем углу).",
+                "2. Откройте раздел «Раздельное проксирование» (Per-App Proxy).",
+                "3. Включите режим «Обход выбранных приложений» (Bypass selected apps).",
+                "4. Отметьте в списке банковские сервисы и Госуслуги из скопированного списка (Сбер, Т-Банк, ВТБ, Госуслуги).",
+                "5. Переподключите VPN-профиль. Все банки и госуслуги будут работать напрямую без сбоев и блокировок!"
+            )
+
             VpnClientFormat.AMNEZIA_VPN -> listOf(
                 "1. Откройте приложение AmneziaVPN и перейдите в «Настройки» (иконка шестеренки).",
                 "2. Выберите пункт «Раздельное туннелирование» (Split tunneling).",
@@ -179,23 +200,37 @@ object VpnMaskingHelper {
     fun detectInstalledVpnClient(context: Context): Pair<VpnClientFormat, String>? {
         val pm = context.packageManager
 
-        // Check Amnezia
+        // 1. Check v2RayTun
+        try {
+            val appInfo = pm.getApplicationInfo("com.v2raytun.android", 0)
+            val name = pm.getApplicationLabel(appInfo).toString()
+            return Pair(VpnClientFormat.V2RAYTUN, if (name.isNotBlank()) name else "v2RayTun")
+        } catch (_: PackageManager.NameNotFoundException) {}
+
+        // 2. Check Amnezia
         try {
             val appInfo = pm.getApplicationInfo("org.amnezia.vpn", 0)
             val name = pm.getApplicationLabel(appInfo).toString()
             return Pair(VpnClientFormat.AMNEZIA_VPN, name)
         } catch (_: PackageManager.NameNotFoundException) {}
 
-        // Check v2rayNG
+        // 3. Check v2rayNG
         try {
             val appInfo = pm.getApplicationInfo("com.v2ray.ang", 0)
             val name = pm.getApplicationLabel(appInfo).toString()
             return Pair(VpnClientFormat.V2RAYNG_NEKOBOX, name)
         } catch (_: PackageManager.NameNotFoundException) {}
 
-        // Check NekoBox
+        // 4. Check NekoBox
         try {
             val appInfo = pm.getApplicationInfo("moe.nb4a", 0)
+            val name = pm.getApplicationLabel(appInfo).toString()
+            return Pair(VpnClientFormat.V2RAYNG_NEKOBOX, name)
+        } catch (_: PackageManager.NameNotFoundException) {}
+
+        // 5. Check Hiddify
+        try {
+            val appInfo = pm.getApplicationInfo("io.github.hiddify.client", 0)
             val name = pm.getApplicationLabel(appInfo).toString()
             return Pair(VpnClientFormat.V2RAYNG_NEKOBOX, name)
         } catch (_: PackageManager.NameNotFoundException) {}

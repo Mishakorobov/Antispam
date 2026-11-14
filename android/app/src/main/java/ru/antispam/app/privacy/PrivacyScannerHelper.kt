@@ -83,18 +83,32 @@ object PrivacyScannerHelper {
 
         try {
             val installedPackages = pm.getInstalledPackages(PackageManager.GET_PERMISSIONS)
+            val enabledAccessibilityPackages = try {
+                val raw = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
+                AccessibilityAuditor.parseEnabledServices(raw).map { it.first }.toSet()
+            } catch (_: Exception) {
+                emptySet()
+            }
+
             for (pkg in installedPackages) {
                 val pkgName = pkg.packageName
                 if (pkgName == myPackage) continue
 
                 val appInfo = pkg.applicationInfo ?: continue
-                val isSystem = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+                val isSystem = (appInfo.flags and (ApplicationInfo.FLAG_SYSTEM or ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) != 0
 
-                val requestedPerms = pkg.requestedPermissions?.toSet() ?: emptySet()
-                val hasPhoneState = PERM_READ_PHONE_STATE in requestedPerms
-                val hasRecordAudio = PERM_RECORD_AUDIO in requestedPerms
-                val hasCallLog = (PERM_READ_CALL_LOG in requestedPerms) || (PERM_PROCESS_OUTGOING in requestedPerms)
-                val hasAccessibility = PERM_ACCESSIBILITY in requestedPerms
+                // Phase 13.5: Audit ONLY actively GRANTED runtime permissions!
+                // An app that only requests permissions in AndroidManifest without user granting them poses NO active threat.
+                val hasPhoneState = pm.checkPermission(PERM_READ_PHONE_STATE, pkgName) == PackageManager.PERMISSION_GRANTED
+                val hasRecordAudio = pm.checkPermission(PERM_RECORD_AUDIO, pkgName) == PackageManager.PERMISSION_GRANTED
+                val hasCallLog = (pm.checkPermission(PERM_READ_CALL_LOG, pkgName) == PackageManager.PERMISSION_GRANTED) ||
+                        (pm.checkPermission(PERM_PROCESS_OUTGOING, pkgName) == PackageManager.PERMISSION_GRANTED)
+                val hasAccessibility = pkgName in enabledAccessibilityPackages
+
+                // Exclude any app where user has not granted any of these permissions (or revoked all of them)
+                if (!hasPhoneState && !hasRecordAudio && !hasCallLog && !hasAccessibility) {
+                    continue
+                }
 
                 val appName = try {
                     pm.getApplicationLabel(appInfo).toString()
@@ -112,10 +126,7 @@ object PrivacyScannerHelper {
                     isSystem = isSystem
                 )
 
-                // Only include apps that request phone/audio/call permissions
-                if (hasPhoneState || hasRecordAudio || hasCallLog || hasAccessibility) {
-                    results.add(risk)
-                }
+                results.add(risk)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error scanning installed packages: ${e.message}", e)
@@ -161,8 +172,6 @@ object PrivacyScannerHelper {
         }
 
         // 2. Targeted Surveillance Superapps (ru.vk.max, etc.)
-        val isSuperapp = cleanPkg in KNOWN_SUPERAPPS || (hasPhoneState && hasRecordAudio && !isSystem && cleanPkg !in KNOWN_TRUSTED_MESSENGERS)
-
         if (cleanPkg in KNOWN_SUPERAPPS) {
             return AppPrivacyRisk(
                 appName = appName,
@@ -178,7 +187,35 @@ object PrivacyScannerHelper {
             )
         }
 
-        // 3. Trusted Messengers (Telegram, WhatsApp)
+        // 3. System & OEM apps (Google, Samsung, OEM, AOSP, Android Auto, Google Photos) - Presumption of Innocence
+        // Standard pre-installed OS components must NEVER be classified as SUPERAPP_SURVEILLANCE
+        val isOemOrSystemApp = isSystem ||
+                cleanPkg.startsWith("com.android.") ||
+                cleanPkg.startsWith("com.google.android.") ||
+                cleanPkg.startsWith("com.samsung.") ||
+                cleanPkg.startsWith("com.sec.") ||
+                cleanPkg.startsWith("com.microsoft.appmanager")
+
+        if (isOemOrSystemApp) {
+            return AppPrivacyRisk(
+                appName = appName,
+                packageName = packageName,
+                riskLevel = PrivacyRiskLevel.SAFE,
+                category = PrivacyCategory.SYSTEM_DIALER,
+                hasReadPhoneState = hasPhoneState,
+                hasRecordAudio = hasRecordAudio,
+                hasCallLog = hasCallLog,
+                hasAccessibility = hasAccessibility,
+                riskDescription = if (isDialer) {
+                    "Системный компонент телефонии: необходим для совершения стандартных вызовов. Исключен из угроз."
+                } else {
+                    "Предустановленное системное приложение Android/Samsung. Доступ к разрешениям является штатным."
+                },
+                isSystemApp = isSystem
+            )
+        }
+
+        // 4. Trusted Messengers (Telegram, WhatsApp)
         val isTrustedMessenger = cleanPkg in KNOWN_TRUSTED_MESSENGERS
 
         val (level, category, desc) = when {

@@ -2083,6 +2083,7 @@ private fun VpnMaskingCard(
                     ) {
                         Text(
                             text = when (format) {
+                                VpnClientFormat.V2RAYTUN -> "v2RayTun"
                                 VpnClientFormat.AMNEZIA_VPN -> "Amnezia"
                                 VpnClientFormat.V2RAYNG_NEKOBOX -> "v2ray / Neko"
                                 VpnClientFormat.RAW_PACKAGE_LIST -> "Список"

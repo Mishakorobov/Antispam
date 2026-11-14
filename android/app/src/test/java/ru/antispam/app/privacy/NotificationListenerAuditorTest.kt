@@ -42,13 +42,26 @@ class NotificationListenerAuditorTest {
     fun test_classifyRisk_systemAospIsSafe() {
         val (risk1, desc1) = NotificationListenerAuditor.classifyRisk("com.android.systemui", isSystemApp = true)
         assertEquals(ListenerRiskLevel.SAFE, risk1)
-        assertTrue(desc1.contains("безопасен") || desc1.contains("Системный"))
+        assertTrue(desc1.contains("безопасен") || desc1.contains("Системный") || desc1.contains("Официальный"))
 
         val (risk2, desc2) = NotificationListenerAuditor.classifyRisk("android", isSystemApp = true)
         assertEquals(ListenerRiskLevel.SAFE, risk2)
 
         val (risk3, desc3) = NotificationListenerAuditor.classifyRisk("com.google.android.gms", isSystemApp = true)
         assertEquals(ListenerRiskLevel.SAFE, risk3)
+
+        // Samsung, Microsoft & Google official components are SAFE
+        val (riskMs, _) = NotificationListenerAuditor.classifyRisk("com.microsoft.appmanager", isSystemApp = false)
+        assertEquals(ListenerRiskLevel.SAFE, riskMs)
+
+        val (riskAuto, _) = NotificationListenerAuditor.classifyRisk("com.google.android.projection.gearhead", isSystemApp = false)
+        assertEquals(ListenerRiskLevel.SAFE, riskAuto)
+
+        val (riskRoutines, _) = NotificationListenerAuditor.classifyRisk("com.samsung.android.app.routines", isSystemApp = false)
+        assertEquals(ListenerRiskLevel.SAFE, riskRoutines)
+
+        val (riskOneUi, _) = NotificationListenerAuditor.classifyRisk("com.sec.android.app.launcher", isSystemApp = false)
+        assertEquals(ListenerRiskLevel.SAFE, riskOneUi)
     }
 
     @Test
@@ -59,6 +72,13 @@ class NotificationListenerAuditorTest {
         )
         assertEquals(ListenerRiskLevel.MEDIUM, riskSamsung)
         assertTrue(descSamsung.contains("носимых") || descSamsung.contains("часы"))
+
+        val (riskFit3, descFit3) = NotificationListenerAuditor.classifyRisk(
+            "com.samsung.wearable.fit3plugin",
+            isSystemApp = false
+        )
+        assertEquals(ListenerRiskLevel.MEDIUM, riskFit3)
+        assertTrue(descFit3.contains("носимых") || descFit3.contains("часы"))
 
         val (riskHuawei, _) = NotificationListenerAuditor.classifyRisk("com.huawei.health", isSystemApp = false)
         assertEquals(ListenerRiskLevel.MEDIUM, riskHuawei)

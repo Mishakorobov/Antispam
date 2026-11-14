@@ -13,6 +13,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ru.antispam.app.data.local.AppDatabase
+import ru.antispam.app.data.repository.SyncRepository
+import ru.antispam.app.data.repository.SyncResult
 import ru.antispam.app.privacy.FamilyLockManager
 import ru.antispam.app.privacy.ProtectionPresetManager
 import ru.antispam.app.privacy.model.ProtectionPreset
@@ -65,7 +67,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             val vendor = OemOnboardingHelper.detectOem()
             val isIgnored = OemOnboardingHelper.isIgnoringBatteryOptimizations(getApplication())
             val isBannerDismissed = prefs.getBoolean("oem_banner_dismissed", false)
-            val shouldShowBanner = !isBannerDismissed && (vendor.isAggressiveKiller || !isIgnored)
+            val shouldShowBanner = !isBannerDismissed && !isIgnored
             val isFamilyLock = FamilyLockManager.isFamilyLockEnabled(getApplication())
             val isSecure = FamilyLockManager.isDeviceSecure(getApplication())
 
@@ -129,13 +131,50 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun triggerSyncNow() {
-        _uiState.update { it.copy(isSyncing = true) }
-        val workRequest = OneTimeWorkRequestBuilder<SyncPoolsWorker>().build()
-        WorkManager.getInstance(getApplication()).enqueue(workRequest)
-        // Refresh after short delay
+        _uiState.update { it.copy(isSyncing = true, p2pMessage = "Синхронизация с глобальной CDN...") }
         viewModelScope.launch(Dispatchers.IO) {
-            kotlinx.coroutines.delay(2000)
-            loadSettings()
+            val deviceHash = SyncPoolsWorker.getOrCreateDeviceHash(getApplication())
+            val repository = SyncRepository(db, context = getApplication())
+            try {
+                when (val result = repository.synchronize(deviceHash)) {
+                    is SyncResult.Success -> {
+                        _uiState.update {
+                            it.copy(
+                                isSyncing = false,
+                                isP2pSuccess = true,
+                                p2pMessage = "База успешно обновлена: v${result.currentVersion} (+${result.addedCount} пулов)!"
+                            )
+                        }
+                        loadSettings()
+                    }
+                    is SyncResult.NotModified -> {
+                        _uiState.update {
+                            it.copy(
+                                isSyncing = false,
+                                isP2pSuccess = true,
+                                p2pMessage = "База уже актуальна (v${_uiState.value.currentDatabaseVersion}). Новых спам-пулов нет."
+                            )
+                        }
+                    }
+                    is SyncResult.Failure -> {
+                        _uiState.update {
+                            it.copy(
+                                isSyncing = false,
+                                isP2pSuccess = false,
+                                p2pMessage = "Ошибка синхронизации: ${result.message}"
+                            )
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isSyncing = false,
+                        isP2pSuccess = false,
+                        p2pMessage = "Сбой сети: ${e.message ?: "проверьте интернет"}"
+                    )
+                }
+            }
         }
     }
 

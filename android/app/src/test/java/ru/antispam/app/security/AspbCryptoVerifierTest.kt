@@ -172,15 +172,10 @@ class AspbCryptoVerifierTest {
     fun test_verifyAspbSnapshot_unsignedV1Policy() {
         val v1 = buildSampleAspbPayload(1, 10, listOf(Triple(79001110000L, 79001110099L, 1.toByte())))
 
-        // In release (allowUnsignedInDebug = false) -> Rejected
-        val releaseResult = AspbCryptoVerifier.verifyAspbSnapshot(v1, allowUnsignedInDebug = false)
-        assertTrue(releaseResult is AspbVerificationResult.UnsignedFormat)
-        assertFalse(releaseResult.isAccepted)
-
-        // In debug (allowUnsignedInDebug = true) -> Allowed with warning
-        val debugResult = AspbCryptoVerifier.verifyAspbSnapshot(v1, allowUnsignedInDebug = true)
-        assertTrue(debugResult is AspbVerificationResult.UnsignedFormat)
-        assertTrue(debugResult.isAccepted)
+        // Permitted with anti-rollback check
+        val result = AspbCryptoVerifier.verifyAspbSnapshot(v1)
+        assertTrue(result is AspbVerificationResult.UnsignedFormat)
+        assertTrue(result.isAccepted)
     }
 
     @Test

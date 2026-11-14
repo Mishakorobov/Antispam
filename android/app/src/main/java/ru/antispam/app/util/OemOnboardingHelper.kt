@@ -173,13 +173,19 @@ object OemOnboardingHelper {
             }
 
             OemVendor.SAMSUNG_ONEUI -> {
-                val samsungLool = Intent()
-                samsungLool.component = ComponentName("com.samsung.android.lool", "com.samsung.android.sm.ui.battery.BatteryActivity")
-                list.add(samsungLool)
+                // On Samsung One UI (One UI 1 to 6), internal activities in com.samsung.android.sm / lool
+                // are private and unexported (throwing SecurityException: READ_SEARCH_INDEXABLES).
+                // The most direct deep-link is the system-level Battery Optimization exemption dialog,
+                // followed by App Details Settings (from which Samsung provides direct access to "Battery -> Unrestricted").
+                val reqIgnore = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                    data = Uri.parse("package:$pkg")
+                }
+                list.add(reqIgnore)
 
-                val samsungSm = Intent()
-                samsungSm.component = ComponentName("com.samsung.android.sm", "com.samsung.android.sm.ui.battery.BatteryActivity")
-                list.add(samsungSm)
+                val appDetails = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = Uri.parse("package:$pkg")
+                }
+                list.add(appDetails)
             }
 
             OemVendor.VIVO_ORIGINOS -> {
@@ -262,20 +268,34 @@ object OemOnboardingHelper {
      * Opens the vendor autostart / battery management screen.
      */
     fun openAutostartSettings(context: Context): Boolean {
-        val intent = getAutostartSettingsIntent(context) ?: return false
-        return try {
-            context.startActivity(intent)
-            true
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to start autostart settings intent: ${e.message}")
+        val candidates = getCandidateIntents(context)
+        val pm = context.packageManager
+
+        for (intent in candidates) {
             try {
-                val fallback = Intent(Settings.ACTION_SETTINGS)
-                fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                context.startActivity(fallback)
-                true
-            } catch (e2: Exception) {
-                false
+                if (intent.resolveActivity(pm) != null) {
+                    val target = Intent(intent).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(target)
+                    return true
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed candidate intent $intent: ${e.message}")
             }
+        }
+
+        // Direct fallback: Deep link into AntiSpam Shield Application Details Settings
+        return try {
+            val fallback = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.parse("package:${context.packageName}")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(fallback)
+            true
+        } catch (e2: Exception) {
+            Log.e(TAG, "Failed to open fallback app details: ${e2.message}")
+            false
         }
     }
 }
