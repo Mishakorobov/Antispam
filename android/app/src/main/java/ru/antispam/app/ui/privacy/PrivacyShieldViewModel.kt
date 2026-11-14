@@ -17,6 +17,7 @@ import ru.antispam.app.privacy.MicGuardService
 import ru.antispam.app.privacy.MicJammerManager
 import ru.antispam.app.privacy.AccessibilityAuditor
 import ru.antispam.app.privacy.ClipboardGuardManager
+import ru.antispam.app.privacy.GeoTriangulationAuditor
 import ru.antispam.app.privacy.NotificationListenerAuditor
 import ru.antispam.app.privacy.PrivacyCategory
 import ru.antispam.app.privacy.PrivacyRiskLevel
@@ -33,6 +34,8 @@ import ru.antispam.app.privacy.model.MaskingTargetApp
 import ru.antispam.app.privacy.model.NotificationListenerApp
 import ru.antispam.app.privacy.model.PackagePrivacyProfile
 import ru.antispam.app.privacy.model.SuperAppRiskLevel
+import ru.antispam.app.privacy.model.TriangulationRiskApp
+import ru.antispam.app.privacy.model.TriangulationRiskLevel
 import ru.antispam.app.util.VipModeManager
 
 data class PrivacyShieldUiState(
@@ -75,7 +78,10 @@ data class PrivacyShieldUiState(
     val selectedVpnFormat: VpnClientFormat = VpnClientFormat.AMNEZIA_VPN,
     val isVpnConfigCopied: Boolean = false,
     val copiedAppCount: Int = 0,
-    val showVpnGuideDialog: Boolean = false
+    val showVpnGuideDialog: Boolean = false,
+    val triangulationApps: List<TriangulationRiskApp> = emptyList(),
+    val triangulationCriticalCount: Int = 0,
+    val triangulationHighCount: Int = 0
 )
 
 class PrivacyShieldViewModel(application: Application) : AndroidViewModel(application) {
@@ -169,6 +175,9 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
             val targetApps = VpnMaskingHelper.getInstalledTargetApps(getApplication())
             val detectedVpn = VpnMaskingHelper.detectInstalledVpnClient(getApplication())
 
+            // Phase 9.3: Audit stealth geo-triangulation without GPS
+            val triangulationAudit = GeoTriangulationAuditor.auditSummary(getApplication())
+
             _uiState.update {
                 it.copy(
                     scannedApps = apps,
@@ -189,7 +198,10 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
                     isVpnInventoryExposed = superAppAudit.isVpnInventoryExposed,
                     installedTargetApps = targetApps,
                     detectedVpnClient = detectedVpn,
-                    selectedVpnFormat = detectedVpn?.first ?: it.selectedVpnFormat
+                    selectedVpnFormat = detectedVpn?.first ?: it.selectedVpnFormat,
+                    triangulationApps = triangulationAudit.apps,
+                    triangulationCriticalCount = triangulationAudit.criticalCount,
+                    triangulationHighCount = triangulationAudit.highCount
                 )
             }
         }
@@ -201,6 +213,10 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
 
     fun openAccessibilitySettings() {
         AccessibilityAuditor.openAccessibilitySettings(getApplication())
+    }
+
+    fun openLocationSettings() {
+        GeoTriangulationAuditor.openLocationSettings(getApplication())
     }
 
     fun openAppDetails(packageName: String) {

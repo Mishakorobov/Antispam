@@ -77,6 +77,8 @@ import ru.antispam.app.privacy.model.NotificationListenerApp
 import ru.antispam.app.privacy.model.PackagePrivacyProfile
 import ru.antispam.app.privacy.model.RussianAppRegistry
 import ru.antispam.app.privacy.model.SuperAppRiskLevel
+import ru.antispam.app.privacy.model.TriangulationRiskApp
+import ru.antispam.app.privacy.model.TriangulationRiskLevel
 import ru.antispam.app.ui.components.AppleGroupedCard
 import ru.antispam.app.ui.components.AppleHairlineDivider
 import ru.antispam.app.ui.theme.AppleBlue
@@ -689,6 +691,23 @@ fun PrivacyShieldScreen(
                 onShowGuide = { viewModel.showVpnGuide() },
                 onLaunchVpn = { viewModel.launchVpnClient(it) },
                 onOpenVpnSettings = { viewModel.openVpnSettings() }
+            )
+        }
+
+        // Phase 9.3: Stealth Geo-Triangulation without GPS Auditor
+        item {
+            TriangulationAuditCard(
+                apps = state.triangulationApps,
+                criticalCount = state.triangulationCriticalCount,
+                highCount = state.triangulationHighCount,
+                onOpenLocationSettings = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    viewModel.openLocationSettings()
+                },
+                onOpenAppDetails = { pkg ->
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    viewModel.openAppDetails(pkg)
+                }
             )
         }
 
@@ -1912,4 +1931,190 @@ private fun VpnSetupGuideDialog(
             }
         }
     )
+}
+
+@Composable
+private fun TriangulationAuditCard(
+    apps: List<TriangulationRiskApp>,
+    criticalCount: Int,
+    highCount: Int,
+    onOpenLocationSettings: () -> Unit,
+    onOpenAppDetails: (String) -> Unit
+) {
+    AppleGroupedCard {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (criticalCount > 0) AppleRed.copy(alpha = 0.15f)
+                            else if (highCount > 0) AppleOrange.copy(alpha = 0.15f)
+                            else AppleMintGreen.copy(alpha = 0.15f)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (criticalCount > 0) Icons.Rounded.Warning else Icons.Rounded.Public,
+                        contentDescription = "Triangulation Icon",
+                        tint = if (criticalCount > 0) AppleRed else if (highCount > 0) AppleOrange else AppleMintGreen,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(14.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Скрытая геолокация (Без GPS)",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = if (criticalCount > 0) "Триангуляция до квартиры без спутников!"
+                        else if (highCount > 0) "Обнаружен сбор данных Wi-Fi или вышек"
+                        else "Защита от скрытого отслеживания координат",
+                        fontSize = 13.sp,
+                        color = if (criticalCount > 0) AppleRed else if (highCount > 0) AppleOrange else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            if (criticalCount > 0) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(AppleRed.copy(alpha = 0.12f))
+                        .padding(12.dp)
+                ) {
+                    Text(
+                        text = "🚨 КРИТИЧЕСКАЯ УГРОЗА: $criticalCount приложений способны вычислять ваш точный домашний адрес без включения GPS через триангуляцию по BSSID Wi-Fi роутеров и Cell ID сотовых вышек!",
+                        fontSize = 12.sp,
+                        color = AppleRed,
+                        lineHeight = 16.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+            } else if (highCount > 0) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(AppleOrange.copy(alpha = 0.12f))
+                        .padding(12.dp)
+                ) {
+                    Text(
+                        text = "⚠️ ВНИМАНИЕ: $highCount приложений запрашивают доступ к сканированию сетей Wi-Fi или сотовым вышкам в связке с геолокацией.",
+                        fontSize = 12.sp,
+                        color = AppleOrange,
+                        lineHeight = 16.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+            } else if (apps.isEmpty()) {
+                Text(
+                    text = "Скрытая мультивекторная триангуляция не обнаружена. Ваши координаты защищены от негласного сбора при отключенном GPS.",
+                    fontSize = 13.sp,
+                    color = AppleMintGreen
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+            }
+
+            // Top apps display
+            apps.take(5).forEach { app ->
+                val badgeColor = when (app.riskLevel) {
+                    TriangulationRiskLevel.CRITICAL -> AppleRed
+                    TriangulationRiskLevel.HIGH -> AppleOrange
+                    TriangulationRiskLevel.MEDIUM -> AppleBlue
+                    TriangulationRiskLevel.SAFE -> AppleMintGreen
+                }
+                val badgeText = when (app.riskLevel) {
+                    TriangulationRiskLevel.CRITICAL -> "ТРИАНГУЛЯЦИЯ"
+                    TriangulationRiskLevel.HIGH -> "СБОР BSSID/ВЫШЕК"
+                    TriangulationRiskLevel.MEDIUM -> "НАВИГАТОР/ГЕО"
+                    TriangulationRiskLevel.SAFE -> "СИСТЕМА"
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = app.appName,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = app.riskDescription,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                            lineHeight = 14.sp
+                        )
+                        if (app.warningBadges.isNotEmpty()) {
+                            Text(
+                                text = "Векторы: " + app.warningBadges.joinToString(" • "),
+                                fontSize = 10.sp,
+                                color = badgeColor,
+                                lineHeight = 13.sp
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    TextButton(
+                        onClick = { onOpenAppDetails(app.packageName) }
+                    ) {
+                        Text(
+                            text = "Ограничить",
+                            fontSize = 12.sp,
+                            color = AppleBlue,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Button(
+                onClick = onOpenLocationSettings,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (criticalCount > 0) AppleRed else AppleBlue
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Public,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Настройки геолокации системы",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+    }
 }
