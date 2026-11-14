@@ -100,7 +100,15 @@ object AccessibilityAuditor {
             )
         }
 
-        // 3. Third-party non-system app -> CRITICAL RISK
+        // 3. Known password manager or autofill tool
+        if (TrustedAppManager.KNOWN_PASSWORD_MANAGERS.contains(lowerPkg)) {
+            return Pair(
+                AccessibilityRiskLevel.CRITICAL,
+                "Менеджер паролей (автозаполнение). Рекомендуется проверить и добавить в доверенные, чтобы снять штраф."
+            )
+        }
+
+        // 4. Third-party non-system app -> CRITICAL RISK
         return Pair(
             AccessibilityRiskLevel.CRITICAL,
             "КРИТИЧЕСКАЯ УГРОЗА: Стороннее приложение имеет доступ к экрану, может читать переписку в защищенных мессенджерах (Telegram, Signal) и перехватывать нажатия!"
@@ -110,7 +118,10 @@ object AccessibilityAuditor {
     /**
      * Queries active Accessibility Services from Android Settings.
      */
-    fun getActiveAccessibilityServices(context: Context): List<AccessibilityServiceApp> {
+    fun getActiveAccessibilityServices(
+        context: Context,
+        trustedServices: Set<String> = emptySet()
+    ): List<AccessibilityServiceApp> {
         val raw = try {
             Settings.Secure.getString(context.contentResolver, SETTING_ENABLED_ACCESSIBILITY_SERVICES)
         } catch (e: Exception) {
@@ -125,6 +136,7 @@ object AccessibilityAuditor {
         val apps = mutableListOf<AccessibilityServiceApp>()
 
         for ((pkgName, serviceName) in parsedComponents) {
+            val isTrusted = trustedServices.contains(pkgName.lowercase().trim())
             try {
                 val appInfo = pm.getApplicationInfo(pkgName, 0)
                 val isSystem = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
@@ -138,7 +150,8 @@ object AccessibilityAuditor {
                         serviceName = serviceName,
                         isSystemApp = isSystem,
                         riskLevel = riskLevel,
-                        riskDescription = riskDesc
+                        riskDescription = riskDesc,
+                        isTrusted = isTrusted
                     )
                 )
             } catch (e: PackageManager.NameNotFoundException) {
@@ -150,7 +163,8 @@ object AccessibilityAuditor {
                         serviceName = serviceName,
                         isSystemApp = false,
                         riskLevel = riskLevel,
-                        riskDescription = "$riskDesc (Пакет удален или недоступен)"
+                        riskDescription = "$riskDesc (Пакет удален или недоступен)",
+                        isTrusted = isTrusted
                     )
                 )
             } catch (e: Exception) {

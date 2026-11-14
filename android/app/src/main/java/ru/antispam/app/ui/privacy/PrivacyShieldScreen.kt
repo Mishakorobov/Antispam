@@ -655,7 +655,7 @@ fun PrivacyShieldScreen(
             }
         }
 
-        // Phase 8.1: Notification Listener Spy Auditor (SMS & 2FA Protection)
+        // Phase 8.1 & 11.3: Notification Listener Spy Auditor (SMS & 2FA Protection & Whitelist)
         item {
             NotificationListenerAuditCard(
                 listeners = state.notificationListeners,
@@ -663,11 +663,15 @@ fun PrivacyShieldScreen(
                 onOpenSettings = {
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                     viewModel.openNotificationListenerSettings()
+                },
+                onToggleTrust = { pkg ->
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    viewModel.toggleTrustNotificationListener(pkg)
                 }
             )
         }
 
-        // Phase 8.3: Accessibility Services Abuse Auditor
+        // Phase 8.3 & 11.3: Accessibility Services Abuse Auditor (Screen Scrape & Whitelist)
         item {
             AccessibilityAuditCard(
                 services = state.accessibilityServices,
@@ -675,6 +679,10 @@ fun PrivacyShieldScreen(
                 onOpenSettings = {
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                     viewModel.openAccessibilitySettings()
+                },
+                onToggleTrust = { pkg ->
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    viewModel.toggleTrustAccessibilityService(pkg)
                 }
             )
         }
@@ -1202,7 +1210,8 @@ private fun VaultCallItemRow(call: VaultCallRecordEntity) {
 private fun NotificationListenerAuditCard(
     listeners: List<NotificationListenerApp>,
     highRiskCount: Int,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    onToggleTrust: (String) -> Unit
 ) {
     AppleGroupedCard {
         Column(
@@ -1280,15 +1289,17 @@ private fun NotificationListenerAuditCard(
 
             // Display listener apps
             listeners.take(5).forEach { listener ->
-                val badgeColor = when (listener.riskLevel) {
-                    ListenerRiskLevel.HIGH -> AppleRed
-                    ListenerRiskLevel.MEDIUM -> AppleOrange
-                    ListenerRiskLevel.SAFE -> AppleMintGreen
+                val badgeColor = when {
+                    listener.isTrusted -> AppleMintGreen
+                    listener.riskLevel == ListenerRiskLevel.HIGH -> AppleRed
+                    listener.riskLevel == ListenerRiskLevel.MEDIUM -> AppleOrange
+                    else -> AppleMintGreen
                 }
-                val badgeText = when (listener.riskLevel) {
-                    ListenerRiskLevel.HIGH -> "ОПАСНО: СМС/2FA"
-                    ListenerRiskLevel.MEDIUM -> "Носимое устройство"
-                    ListenerRiskLevel.SAFE -> "Система"
+                val badgeText = when {
+                    listener.isTrusted -> "Доверено"
+                    listener.riskLevel == ListenerRiskLevel.HIGH -> "ОПАСНО: СМС/2FA"
+                    listener.riskLevel == ListenerRiskLevel.MEDIUM -> "Носимое устройство"
+                    else -> "Система"
                 }
 
                 Row(
@@ -1298,34 +1309,62 @@ private fun NotificationListenerAuditCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = listener.appName,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            if (listener.isTrusted) {
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(
+                                    imageVector = Icons.Rounded.CheckCircle,
+                                    contentDescription = "Trusted",
+                                    tint = AppleMintGreen,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                        }
                         Text(
-                            text = listener.appName,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = listener.riskDescription,
+                            text = if (listener.isTrusted) "Приложение добавлено в белый список доверенных сервисов. Штраф отключен."
+                                   else listener.riskDescription,
                             fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                            color = if (listener.isTrusted) AppleMintGreen.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                             lineHeight = 14.sp
                         )
                     }
 
                     Spacer(modifier = Modifier.width(8.dp))
 
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(badgeColor.copy(alpha = 0.15f))
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        Text(
-                            text = badgeText,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = badgeColor
-                        )
+                    Column(horizontalAlignment = Alignment.End) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(badgeColor.copy(alpha = 0.15f))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = badgeText,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = badgeColor
+                            )
+                        }
+
+                        // Phase 11.3: 1-click whitelist button
+                        if (!listener.isSystemApp) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = if (listener.isTrusted) "Отозвать" else "Доверять",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (listener.isTrusted) AppleOrange else AppleBlue,
+                                modifier = Modifier
+                                    .clickable { onToggleTrust(listener.packageName) }
+                                    .padding(horizontal = 4.dp, vertical = 2.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -1360,7 +1399,8 @@ private fun NotificationListenerAuditCard(
 private fun AccessibilityAuditCard(
     services: List<AccessibilityServiceApp>,
     criticalCount: Int,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    onToggleTrust: (String) -> Unit
 ) {
     AppleGroupedCard {
         Column(
@@ -1438,15 +1478,17 @@ private fun AccessibilityAuditCard(
 
             // Display active accessibility services
             services.take(5).forEach { service ->
-                val badgeColor = when (service.riskLevel) {
-                    AccessibilityRiskLevel.CRITICAL -> AppleRed
-                    AccessibilityRiskLevel.MEDIUM -> AppleOrange
-                    AccessibilityRiskLevel.SAFE -> AppleMintGreen
+                val badgeColor = when {
+                    service.isTrusted -> AppleMintGreen
+                    service.riskLevel == AccessibilityRiskLevel.CRITICAL -> AppleRed
+                    service.riskLevel == AccessibilityRiskLevel.MEDIUM -> AppleOrange
+                    else -> AppleMintGreen
                 }
-                val badgeText = when (service.riskLevel) {
-                    AccessibilityRiskLevel.CRITICAL -> "КРИТИЧНО"
-                    AccessibilityRiskLevel.MEDIUM -> "OEM Система"
-                    AccessibilityRiskLevel.SAFE -> "Доверенный AOSP"
+                val badgeText = when {
+                    service.isTrusted -> "Доверено"
+                    service.riskLevel == AccessibilityRiskLevel.CRITICAL -> "КРИТИЧНО"
+                    service.riskLevel == AccessibilityRiskLevel.MEDIUM -> "OEM Система"
+                    else -> "Доверенный AOSP"
                 }
 
                 Row(
@@ -1456,34 +1498,62 @@ private fun AccessibilityAuditCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = service.appName,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            if (service.isTrusted) {
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(
+                                    imageVector = Icons.Rounded.CheckCircle,
+                                    contentDescription = "Trusted",
+                                    tint = AppleMintGreen,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                        }
                         Text(
-                            text = service.appName,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = service.riskDescription,
+                            text = if (service.isTrusted) "Приложение (менеджер паролей/сервис) добавлено в белый список. Штраф снят."
+                                   else service.riskDescription,
                             fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                            color = if (service.isTrusted) AppleMintGreen.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                             lineHeight = 14.sp
                         )
                     }
 
                     Spacer(modifier = Modifier.width(8.dp))
 
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(badgeColor.copy(alpha = 0.15f))
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        Text(
-                            text = badgeText,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = badgeColor
-                        )
+                    Column(horizontalAlignment = Alignment.End) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(badgeColor.copy(alpha = 0.15f))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = badgeText,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = badgeColor
+                            )
+                        }
+
+                        // Phase 11.3: 1-click whitelist button for non-system apps
+                        if (!service.isSystemApp) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = if (service.isTrusted) "Отозвать" else "Доверять",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (service.isTrusted) AppleOrange else AppleBlue,
+                                modifier = Modifier
+                                    .clickable { onToggleTrust(service.packageName) }
+                                    .padding(horizontal = 4.dp, vertical = 2.dp)
+                            )
+                        }
                     }
                 }
             }

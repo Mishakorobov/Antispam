@@ -120,7 +120,10 @@ object NotificationListenerAuditor {
     /**
      * Queries active NotificationListener applications from Android Settings.
      */
-    fun getEnabledNotificationListeners(context: Context): List<NotificationListenerApp> {
+    fun getEnabledNotificationListeners(
+        context: Context,
+        trustedPackages: Set<String> = emptySet()
+    ): List<NotificationListenerApp> {
         val raw = try {
             Settings.Secure.getString(context.contentResolver, SETTING_ENABLED_LISTENERS)
         } catch (e: Exception) {
@@ -135,6 +138,7 @@ object NotificationListenerAuditor {
         val apps = mutableListOf<NotificationListenerApp>()
 
         for ((pkgName, serviceName) in parsedComponents) {
+            val isTrusted = trustedPackages.contains(pkgName.lowercase().trim())
             try {
                 val appInfo = pm.getApplicationInfo(pkgName, 0)
                 val isSystem = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
@@ -148,7 +152,8 @@ object NotificationListenerAuditor {
                         serviceName = serviceName,
                         isSystemApp = isSystem,
                         riskLevel = riskLevel,
-                        riskDescription = riskDesc
+                        riskDescription = riskDesc,
+                        isTrusted = isTrusted
                     )
                 )
             } catch (e: PackageManager.NameNotFoundException) {
@@ -161,7 +166,8 @@ object NotificationListenerAuditor {
                         serviceName = serviceName,
                         isSystemApp = false,
                         riskLevel = riskLevel,
-                        riskDescription = "$riskDesc (Пакет удален или недоступен)"
+                        riskDescription = "$riskDesc (Пакет удален или недоступен)",
+                        isTrusted = isTrusted
                     )
                 )
             } catch (e: Exception) {

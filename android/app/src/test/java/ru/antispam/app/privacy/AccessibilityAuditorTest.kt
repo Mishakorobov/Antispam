@@ -90,5 +90,10 @@ class AccessibilityAuditorTest {
         val (riskSpy, descSpy) = AccessibilityAuditor.classifyRisk("com.trojan.bankbot", isSystemApp = false)
         assertEquals(AccessibilityRiskLevel.CRITICAL, riskSpy)
         assertTrue(descSpy.contains("КРИТИЧЕСКАЯ УГРОЗА"))
+
+        // Known password manager
+        val (riskBitwarden, descBitwarden) = AccessibilityAuditor.classifyRisk("com.x8bit.bitwarden", isSystemApp = false)
+        assertEquals(AccessibilityRiskLevel.CRITICAL, riskBitwarden)
+        assertTrue(descBitwarden.contains("Менеджер паролей"))
     }
 }

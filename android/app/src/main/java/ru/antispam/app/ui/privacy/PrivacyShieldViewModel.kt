@@ -28,6 +28,7 @@ import ru.antispam.app.privacy.PrivateCallLogVaultManager
 import ru.antispam.app.privacy.SecurityScoreEngine
 import ru.antispam.app.privacy.SpeakerphoneMonitor
 import ru.antispam.app.privacy.SuperAppInspector
+import ru.antispam.app.privacy.TrustedAppManager
 import ru.antispam.app.privacy.VpnClientFormat
 import ru.antispam.app.privacy.VpnMaskingHelper
 import ru.antispam.app.privacy.model.AccessibilityRiskLevel
@@ -176,13 +177,15 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
             val messengers = apps.count { it.category == PrivacyCategory.TRUSTED_MESSENGER }
             val systems = apps.count { it.category == PrivacyCategory.SYSTEM_DIALER }
 
-            // Phase 8.1: Audit apps with active NotificationListener access
-            val listeners = NotificationListenerAuditor.getEnabledNotificationListeners(getApplication())
-            val highRiskListeners = listeners.count { it.riskLevel == ListenerRiskLevel.HIGH }
+            // Phase 8.1 & 11.3: Audit apps with active NotificationListener access
+            val trustedListeners = TrustedAppManager.getTrustedNotificationListeners(getApplication())
+            val listeners = NotificationListenerAuditor.getEnabledNotificationListeners(getApplication(), trustedListeners)
+            val highRiskListeners = listeners.count { it.riskLevel == ListenerRiskLevel.HIGH && !it.isTrusted }
 
-            // Phase 8.3: Audit apps with active AccessibilityService access
-            val accessibility = AccessibilityAuditor.getActiveAccessibilityServices(getApplication())
-            val criticalAccess = accessibility.count { it.riskLevel == AccessibilityRiskLevel.CRITICAL }
+            // Phase 8.3 & 11.3: Audit apps with active AccessibilityService access
+            val trustedAccessibility = TrustedAppManager.getTrustedAccessibilityServices(getApplication())
+            val accessibility = AccessibilityAuditor.getActiveAccessibilityServices(getApplication(), trustedAccessibility)
+            val criticalAccess = accessibility.count { it.riskLevel == AccessibilityRiskLevel.CRITICAL && !it.isTrusted }
 
             // Phase 9.1: Audit apps with QUERY_ALL_PACKAGES & inventory of VPN clients
             val superAppAudit = SuperAppInspector.auditSuperApps(getApplication())
@@ -402,6 +405,86 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
 
     fun clearRevocationBanner() {
         _uiState.update { it.copy(revocationSuccessMessage = null) }
+    }
+
+    /**
+     * Phase 11.3: Toggles trust status for a NotificationListener application.
+     * Exempts user-approved smartwatch companions from security penalties, enabling 100% score.
+     */
+    fun toggleTrustNotificationListener(packageName: String) {
+        val currentTrusted = TrustedAppManager.isNotificationListenerTrusted(getApplication(), packageName)
+        TrustedAppManager.setNotificationListenerTrusted(getApplication(), packageName, !currentTrusted)
+
+        val trustedSet = TrustedAppManager.getTrustedNotificationListeners(getApplication())
+        val updatedListeners = _uiState.value.notificationListeners.map {
+            if (it.packageName.equals(packageName, ignoreCase = true)) {
+                it.copy(isTrusted = !currentTrusted)
+            } else {
+                it.copy(isTrusted = trustedSet.contains(it.packageName.lowercase()))
+            }
+        }
+        val highRiskCount = updatedListeners.count { it.riskLevel == ListenerRiskLevel.HIGH && !it.isTrusted }
+
+        _uiState.update { state ->
+            val hasRootAdvisory = state.securityScoreReport?.issues?.any { it.type == SecurityIssueType.ROOT_OR_HOOK_ENVIRONMENT } == true
+            val isRegOk = (state.securityScoreReport?.categoryBreakdown?.get("Реестр Минцифры") ?: 0) > 0
+            val updatedInput = PrivacyAuditInput(
+                isRegistryUpToDate = isRegOk,
+                isMicGuardEnabled = state.isMicGuardEnabled,
+                hasNotificationSpies = highRiskCount > 0,
+                isClipboardGuardEnabled = state.isClipboardGuardEnabled,
+                hasMitmRootCa = state.hasMitmThreat,
+                hasCriticalAccessibility = state.criticalAccessibilityCount > 0,
+                hasVpnInventoryExposed = state.isVpnInventoryExposed,
+                hasStealthGeoTrackers = state.triangulationCriticalCount > 0,
+                hasRootOrHooks = hasRootAdvisory
+            )
+            state.copy(
+                notificationListeners = updatedListeners,
+                highRiskListenersCount = highRiskCount,
+                securityScoreReport = SecurityScoreEngine.calculateScore(updatedInput)
+            )
+        }
+    }
+
+    /**
+     * Phase 11.3: Toggles trust status for an Accessibility Service application.
+     * Exempts user-approved password managers (Bitwarden, KeePassDX) from security penalties, enabling 100% score.
+     */
+    fun toggleTrustAccessibilityService(packageName: String) {
+        val currentTrusted = TrustedAppManager.isAccessibilityServiceTrusted(getApplication(), packageName)
+        TrustedAppManager.setAccessibilityServiceTrusted(getApplication(), packageName, !currentTrusted)
+
+        val trustedSet = TrustedAppManager.getTrustedAccessibilityServices(getApplication())
+        val updatedServices = _uiState.value.accessibilityServices.map {
+            if (it.packageName.equals(packageName, ignoreCase = true)) {
+                it.copy(isTrusted = !currentTrusted)
+            } else {
+                it.copy(isTrusted = trustedSet.contains(it.packageName.lowercase()))
+            }
+        }
+        val criticalCount = updatedServices.count { it.riskLevel == AccessibilityRiskLevel.CRITICAL && !it.isTrusted }
+
+        _uiState.update { state ->
+            val hasRootAdvisory = state.securityScoreReport?.issues?.any { it.type == SecurityIssueType.ROOT_OR_HOOK_ENVIRONMENT } == true
+            val isRegOk = (state.securityScoreReport?.categoryBreakdown?.get("Реестр Минцифры") ?: 0) > 0
+            val updatedInput = PrivacyAuditInput(
+                isRegistryUpToDate = isRegOk,
+                isMicGuardEnabled = state.isMicGuardEnabled,
+                hasNotificationSpies = state.highRiskListenersCount > 0,
+                isClipboardGuardEnabled = state.isClipboardGuardEnabled,
+                hasMitmRootCa = state.hasMitmThreat,
+                hasCriticalAccessibility = criticalCount > 0,
+                hasVpnInventoryExposed = state.isVpnInventoryExposed,
+                hasStealthGeoTrackers = state.triangulationCriticalCount > 0,
+                hasRootOrHooks = hasRootAdvisory
+            )
+            state.copy(
+                accessibilityServices = updatedServices,
+                criticalAccessibilityCount = criticalCount,
+                securityScoreReport = SecurityScoreEngine.calculateScore(updatedInput)
+            )
+        }
     }
 
     fun preparePermissionRevocation(appName: String, packageName: String) {
