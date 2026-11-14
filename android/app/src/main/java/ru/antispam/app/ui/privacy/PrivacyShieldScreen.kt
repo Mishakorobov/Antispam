@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.Fingerprint
@@ -72,7 +73,10 @@ import ru.antispam.app.privacy.VpnMaskingHelper
 import ru.antispam.app.privacy.model.AccessibilityRiskLevel
 import ru.antispam.app.privacy.model.AccessibilityServiceApp
 import ru.antispam.app.privacy.model.AdIdPrivacyProfile
+import ru.antispam.app.privacy.model.CallForwardingReport
+import ru.antispam.app.privacy.model.CallForwardingType
 import ru.antispam.app.privacy.model.CertificateRiskLevel
+import ru.antispam.app.privacy.model.ForwardingRiskLevel
 import ru.antispam.app.privacy.model.ListenerRiskLevel
 import ru.antispam.app.privacy.model.MaskingTargetApp
 import ru.antispam.app.privacy.model.NotificationListenerApp
@@ -780,6 +784,25 @@ fun PrivacyShieldScreen(
                 onOpenAdvertisingSettings = {
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                     viewModel.openAdvertisingSettings()
+                }
+            )
+        }
+
+        // Phase 12.2: Call Forwarding & Covert Diversion Auditor
+        item {
+            CallForwardingAuditCard(
+                report = state.callForwardingReport,
+                onResetAll = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    viewModel.openResetCallForwardingDialer()
+                },
+                onQueryForwarding = { type ->
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    viewModel.openQueryCallForwardingDialer(type)
+                },
+                onConfirmClean = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    viewModel.markCallForwardingCleared()
                 }
             )
         }
@@ -2541,6 +2564,288 @@ private fun AdIdCard(
                     fontWeight = FontWeight.SemiBold
                 )
             }
+        }
+    }
+}
+
+/**
+ * Phase 12.2: CallForwardingAuditCard
+ * Visual inspection of active call forwardings and 1-tap USSD reset (##002#)
+ */
+@Composable
+private fun CallForwardingAuditCard(
+    report: CallForwardingReport,
+    onResetAll: () -> Unit,
+    onQueryForwarding: (CallForwardingType) -> Unit,
+    onConfirmClean: () -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    val isDanger = report.hasActiveForwarding || report.riskLevel == ForwardingRiskLevel.CRITICAL
+    val isWarning = report.riskLevel == ForwardingRiskLevel.WARNING
+    val statusColor = when {
+        isDanger -> AppleRed
+        isWarning -> AppleOrange
+        else -> AppleMintGreen
+    }
+
+    AppleGroupedCard {
+        Column(modifier = Modifier.padding(vertical = 12.dp)) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(statusColor.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (isDanger) Icons.Rounded.Warning else Icons.Rounded.Call,
+                        contentDescription = "Call Forwarding Icon",
+                        tint = statusColor,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(14.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Переадресация вызовов",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(statusColor.copy(alpha = 0.15f))
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                        ) {
+                            Text(
+                                text = when {
+                                    isDanger -> "ОПАСНОСТЬ"
+                                    isWarning -> "ВНИМАНИЕ"
+                                    else -> "БЕЗОПАСНО"
+                                },
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = statusColor
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = if (isDanger) "Обнаружена активная переадресация!" else "Защита от скрытого перехвата 2FA и звонков",
+                        fontSize = 13.sp,
+                        color = if (isDanger) AppleRed else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Explanation / Status summary
+            Text(
+                text = report.summary.ifEmpty {
+                    "Шпионские трояны или посторонние лица могут скрытно включить переадресацию (*21*), перехватывая звонки банков и голосовые 2FA-коды."
+                },
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
+                lineHeight = 18.sp
+            )
+
+            if (isDanger) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(AppleRed.copy(alpha = 0.12f))
+                        .padding(10.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Rounded.Warning,
+                            contentDescription = null,
+                            tint = AppleRed,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Внимание: вызовы перенаправляются на другой номер! Немедленно выполните сброс.",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = AppleRed
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Primary 1-Click Reset Button ##002#
+            Button(
+                onClick = onResetAll,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isDanger) AppleRed else AppleBlue
+                ),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Call,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Сбросить все переадресации (##002#)",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White
+                )
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // Expandable details for checking specific rules (*#21#, *#004#, etc.)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded }
+                    .padding(vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (expanded) "Скрыть детальные проверки" else "Проверить отдельные переадресации (*#21#, *#004#)",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = AppleBlue
+                )
+                Text(
+                    text = if (expanded) "▲" else "▼",
+                    fontSize = 12.sp,
+                    color = AppleBlue
+                )
+            }
+
+            AnimatedVisibility(visible = expanded) {
+                Column(
+                    modifier = Modifier.padding(top = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    AppleHairlineDivider()
+
+                    // Unconditional CFU (*#21#)
+                    ForwardingQueryRow(
+                        title = "Безусловная (*#21#)",
+                        subtitle = "Перенаправление всех звонков без исключения",
+                        code = "*#21#",
+                        onQuery = { onQueryForwarding(CallForwardingType.UNCONDITIONAL) }
+                    )
+
+                    AppleHairlineDivider()
+
+                    // All conditional (*#004#)
+                    ForwardingQueryRow(
+                        title = "Все условные (*#004#)",
+                        subtitle = "При недоступности, занятости и неответе",
+                        code = "*#004#",
+                        onQuery = { onQueryForwarding(CallForwardingType.ALL_CONDITIONAL) }
+                    )
+
+                    AppleHairlineDivider()
+
+                    // Unreachable (*#62#)
+                    ForwardingQueryRow(
+                        title = "При недоступности (*#62#)",
+                        subtitle = "Когда телефон выключен или вне зоны сети",
+                        code = "*#62#",
+                        onQuery = { onQueryForwarding(CallForwardingType.UNREACHABLE) }
+                    )
+
+                    AppleHairlineDivider()
+
+                    // Confirm Clean Button
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        TextButton(onClick = onConfirmClean) {
+                            Icon(
+                                imageVector = Icons.Rounded.CheckCircle,
+                                contentDescription = null,
+                                tint = AppleMintGreen,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Отметить как проверенное",
+                                fontSize = 12.sp,
+                                color = AppleMintGreen
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ForwardingQueryRow(
+    title: String,
+    subtitle: String,
+    code: String,
+    onQuery: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = subtitle,
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+            )
+        }
+        Button(
+            onClick = onQuery,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            ),
+            shape = RoundedCornerShape(8.dp)
+        ) {
+            Text(
+                text = code,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = AppleBlue
+            )
         }
     }
 }

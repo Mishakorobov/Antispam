@@ -12,7 +12,8 @@ enum class SecurityIssueType {
     CRITICAL_ACCESSIBILITY_DETECTED,
     SUPERAPP_VPN_EXPOSED,
     STEALTH_GEO_DETECTED,
-    ROOT_OR_HOOK_ENVIRONMENT // Phase 11.1: Soft advisory warning for Root/Magisk/Frida
+    ROOT_OR_HOOK_ENVIRONMENT, // Phase 11.1: Soft advisory warning for Root/Magisk/Frida
+    CALL_FORWARDING_ACTIVE // Phase 12.2: Rogue or unknown call forwarding active
 }
 
 /**
@@ -50,7 +51,8 @@ data class PrivacyAuditInput(
     val hasCriticalAccessibility: Boolean = false,
     val hasVpnInventoryExposed: Boolean = false,
     val hasStealthGeoTrackers: Boolean = false,
-    val hasRootOrHooks: Boolean = false
+    val hasRootOrHooks: Boolean = false,
+    val hasCallForwarding: Boolean = false
 )
 
 /**

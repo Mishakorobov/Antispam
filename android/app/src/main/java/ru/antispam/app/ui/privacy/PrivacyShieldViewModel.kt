@@ -18,6 +18,7 @@ import ru.antispam.app.privacy.MicJammerManager
 import ru.antispam.app.privacy.AccessibilityAuditor
 import ru.antispam.app.privacy.ClipboardGuardManager
 import ru.antispam.app.privacy.AdIdManager
+import ru.antispam.app.privacy.CallForwardingAuditor
 import ru.antispam.app.privacy.CertificateGuardManager
 import ru.antispam.app.privacy.GeoTriangulationAuditor
 import ru.antispam.app.privacy.NotificationListenerAuditor
@@ -34,6 +35,8 @@ import ru.antispam.app.privacy.VpnMaskingHelper
 import ru.antispam.app.privacy.model.AccessibilityRiskLevel
 import ru.antispam.app.privacy.model.AccessibilityServiceApp
 import ru.antispam.app.privacy.model.AdIdPrivacyProfile
+import ru.antispam.app.privacy.model.CallForwardingReport
+import ru.antispam.app.privacy.model.CallForwardingType
 import ru.antispam.app.privacy.model.ListenerRiskLevel
 import ru.antispam.app.privacy.model.MaskingTargetApp
 import ru.antispam.app.privacy.model.NotificationListenerApp
@@ -99,6 +102,7 @@ data class PrivacyShieldUiState(
     val certWarningCount: Int = 0,
     val hasMitmThreat: Boolean = false,
     val adIdProfile: AdIdPrivacyProfile? = null,
+    val callForwardingReport: CallForwardingReport = CallForwardingReport(),
     val securityScoreReport: SecurityScoreReport? = null
 )
 
@@ -218,6 +222,9 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
             // Phase 11.1: Environment integrity check (Soft Advisory for Root/Frida)
             val envReport = AntiTamperHelper.checkEnvironmentIntegrity(getApplication())
 
+            // Phase 12.2: Audit covert call forwarding and SMS diverts
+            val forwardingReport = CallForwardingAuditor.auditCallForwarding(getApplication())
+
             val auditInput = PrivacyAuditInput(
                 isRegistryUpToDate = isRegistryFresh,
                 isMicGuardEnabled = _uiState.value.isMicGuardEnabled,
@@ -227,7 +234,8 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
                 hasCriticalAccessibility = criticalAccess > 0,
                 hasVpnInventoryExposed = superAppAudit.isVpnInventoryExposed,
                 hasStealthGeoTrackers = triangulationAudit.criticalCount > 0,
-                hasRootOrHooks = envReport.hasPrivilegeOrHookExposure
+                hasRootOrHooks = envReport.hasPrivilegeOrHookExposure,
+                hasCallForwarding = forwardingReport.hasActiveForwarding
             )
             val scoreReport = SecurityScoreEngine.calculateScore(auditInput)
 
@@ -260,6 +268,7 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
                     certWarningCount = certAudit.warningCount,
                     hasMitmThreat = certAudit.hasMitmThreat,
                     adIdProfile = adProfile,
+                    callForwardingReport = forwardingReport,
                     securityScoreReport = scoreReport
                 )
             }
@@ -297,6 +306,9 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
             SecurityIssueType.ROOT_OR_HOOK_ENVIRONMENT -> {
                 AntiTamperHelper.openRootManagerOrSecuritySettings(getApplication())
             }
+            SecurityIssueType.CALL_FORWARDING_ACTIVE -> {
+                openResetCallForwardingDialer()
+            }
         }
     }
 
@@ -318,6 +330,36 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
 
     fun openAdvertisingSettings(): Boolean {
         return AdIdManager.openAdvertisingSettings(getApplication())
+    }
+
+    /**
+     * Phase 12.2: Opens the system dialer with universal cancellation code ##002#
+     * to purge and clear all active call and SMS forwardings with 1 tap.
+     */
+    fun openResetCallForwardingDialer() {
+        val intent = CallForwardingAuditor.createResetForwardingIntent()
+        try {
+            getApplication<Application>().startActivity(intent)
+        } catch (_: Exception) {}
+    }
+
+    /**
+     * Phase 12.2: Opens the system dialer with query code (e.g. *#21# or *#004#)
+     * to check carrier-level forwarding diversion status.
+     */
+    fun openQueryCallForwardingDialer(type: CallForwardingType = CallForwardingType.UNCONDITIONAL) {
+        val intent = CallForwardingAuditor.createQueryForwardingIntent(type)
+        try {
+            getApplication<Application>().startActivity(intent)
+        } catch (_: Exception) {}
+    }
+
+    /**
+     * Phase 12.2: Records user confirmation that forwardings were checked and cleared.
+     */
+    fun markCallForwardingCleared() {
+        CallForwardingAuditor.markAllForwardingCleared(getApplication())
+        refreshScan()
     }
 
     fun openAppDetails(packageName: String) {
@@ -452,7 +494,8 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
                 hasCriticalAccessibility = state.criticalAccessibilityCount > 0,
                 hasVpnInventoryExposed = state.isVpnInventoryExposed,
                 hasStealthGeoTrackers = state.triangulationCriticalCount > 0,
-                hasRootOrHooks = hasRootAdvisory
+                hasRootOrHooks = hasRootAdvisory,
+                hasCallForwarding = state.callForwardingReport.hasActiveForwarding
             )
             state.copy(
                 notificationListeners = updatedListeners,
@@ -492,7 +535,8 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
                 hasCriticalAccessibility = criticalCount > 0,
                 hasVpnInventoryExposed = state.isVpnInventoryExposed,
                 hasStealthGeoTrackers = state.triangulationCriticalCount > 0,
-                hasRootOrHooks = hasRootAdvisory
+                hasRootOrHooks = hasRootAdvisory,
+                hasCallForwarding = state.callForwardingReport.hasActiveForwarding
             )
             state.copy(
                 accessibilityServices = updatedServices,

@@ -36,6 +36,7 @@ object SecurityScoreEngine {
     const val PENALTY_ACCESSIBILITY = 10
     const val PENALTY_SUPERAPP_VPN = 10
     const val PENALTY_STEALTH_GEO = 5
+    const val PENALTY_CALL_FORWARDING = 15
 
     /**
      * Calculates the security score report based on the provided audit inputs.
@@ -182,6 +183,22 @@ object SecurityScoreEngine {
                     severity = SecurityIssueSeverity.HIGH,
                     scoreDeduction = PENALTY_STEALTH_GEO,
                     actionLabel = "Настроить геолокацию"
+                )
+            )
+        }
+
+        // Phase 12.2: Rogue or covert call forwarding active
+        if (input.hasCallForwarding) {
+            score -= PENALTY_CALL_FORWARDING
+            issues.add(
+                SecurityIssue(
+                    id = "call_forwarding_active",
+                    type = SecurityIssueType.CALL_FORWARDING_ACTIVE,
+                    title = "Активна переадресация вызовов",
+                    description = "Оператор сообщает об активной безусловной переадресации звонков (*21*). Ваши голосовые 2FA-коды и банковские звонки могут перехватываться.",
+                    severity = SecurityIssueSeverity.CRITICAL,
+                    scoreDeduction = PENALTY_CALL_FORWARDING,
+                    actionLabel = "Сбросить (##002#)"
                 )
             )
         }
