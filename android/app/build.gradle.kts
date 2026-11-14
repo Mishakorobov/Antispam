@@ -17,6 +17,12 @@ android {
         versionCode = 1
         versionName = "1.0.0"
 
+        buildConfigField(
+            "String",
+            "ED25519_PUBLIC_KEY",
+            "\"24ebaac70ef49eaf434e4bd0d62403000e0cb1e9f31d453cdc9be3dc38309916\""
+        )
+
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -99,6 +105,9 @@ dependencies {
     implementation(libs.okhttp.logging)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.android)
+
+    // Cryptography & Security
+    implementation(libs.bouncycastle.prov)
 
     // Testing
     testImplementation(libs.junit)

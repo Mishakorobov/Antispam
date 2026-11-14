@@ -1,6 +1,8 @@
+import os
 import time
 import logging
 from pathlib import Path
+from typing import Optional
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -358,25 +360,79 @@ def ttl_cleanup():
 @app.command(name="export-aspb")
 def export_aspb(
     output: Path = typer.Option(Path("data/pools.aspb"), "--output", "-o", help="Output path for binary ASPB file"),
-    limit: int = typer.Option(500_000, "--limit", "-l", help="Max active blocks to include")
+    limit: int = typer.Option(500_000, "--limit", "-l", help="Max active blocks to include"),
+    key: Optional[str] = typer.Option(None, "--key", "-k", help="Ed25519 private key hex for signing (or set ASPB_ED25519_PRIVATE_KEY)")
 ):
     """Compile and export active blocked pools into high-density binary ASPB format for CDN distribution."""
     from backend.aspb import generate_aspb_snapshot, parse_aspb_payload
+    from backend.crypto_signer import sign_aspb_payload
     init_db()
     session = SessionLocal()
     try:
         data = generate_aspb_snapshot(session, limit=limit)
+        
+        # Check if signing key is provided or available in env
+        priv_key = key or os.getenv("ASPB_ED25519_PRIVATE_KEY")
+        if priv_key:
+            data = sign_aspb_payload(data, priv_key)
+            console.print("[cyan]Applied Ed25519 cryptographic signature (ASPB v2)[/cyan]")
+
         output.parent.mkdir(parents=True, exist_ok=True)
         with open(output, "wb") as f:
             f.write(data)
 
         parsed = parse_aspb_payload(data)
+        signed_status = "signed v2" if parsed.get("signature") else "unsigned v1"
         console.print(
             f"[bold green]Successfully exported {len(parsed['added']):,} pools to {output} "
-            f"({len(data):,} bytes, delta v{parsed['current_version']})[/bold green]"
+            f"({len(data):,} bytes, delta v{parsed['current_version']}, {signed_status})[/bold green]"
         )
     finally:
         session.close()
+
+
+@app.command(name="sign-aspb")
+def sign_aspb(
+    file_path: Path = typer.Argument(Path("data/pools.aspb"), help="Path to ASPB file to sign"),
+    key: Optional[str] = typer.Option(None, "--key", "-k", help="Ed25519 private key hex (or set ASPB_ED25519_PRIVATE_KEY)")
+):
+    """Sign an ASPB binary file with Ed25519 private key (upgrades to ASPB v2)."""
+    from backend.crypto_signer import sign_aspb_file
+    priv_key = key or os.getenv("ASPB_ED25519_PRIVATE_KEY")
+    if not priv_key:
+        console.print("[bold red]Error: No private key provided. Use --key <hex> or set ASPB_ED25519_PRIVATE_KEY[/bold red]")
+        raise typer.Exit(code=1)
+
+    signed = sign_aspb_file(file_path, priv_key)
+    console.print(f"[bold green]Successfully signed {file_path} with Ed25519 ({len(signed):,} bytes)[/bold green]")
+
+
+@app.command(name="verify-aspb")
+def verify_aspb(
+    file_path: Path = typer.Argument(Path("data/pools.aspb"), help="Path to ASPB file to verify"),
+    public_key: Optional[str] = typer.Option(None, "--public-key", "-p", help="Ed25519 public key hex")
+):
+    """Verify Ed25519 signature of an ASPB file."""
+    from backend.crypto_signer import verify_aspb_file, DEFAULT_PUBLIC_KEY_HEX
+    pub = public_key or os.getenv("ASPB_ED25519_PUBLIC_KEY") or DEFAULT_PUBLIC_KEY_HEX
+    is_valid, msg = verify_aspb_file(file_path, pub)
+    if is_valid:
+        console.print(f"[bold green]VERIFIED: {msg}[/bold green]")
+    else:
+        console.print(f"[bold red]FAILED: {msg}[/bold red]")
+        raise typer.Exit(code=1)
+
+
+@app.command(name="generate-aspb-keys")
+def generate_aspb_keys():
+    """Generate a new Ed25519 keypair for signing ASPB pool snapshots."""
+    from backend.crypto_signer import generate_ed25519_keypair
+    priv_bytes, pub_bytes = generate_ed25519_keypair()
+    console.print("[bold yellow]New Ed25519 Keypair for ASPB Snapshots:[/bold yellow]")
+    console.print(f"  Public Key Hex:  [bold cyan]{pub_bytes.hex()}[/bold cyan]")
+    console.print(f"  Private Key Hex: [bold red]{priv_bytes.hex()}[/bold red]")
+    console.print("\n[dim]Store the Private Key in GitHub Actions Secrets (ASPB_ED25519_PRIVATE_KEY)[/dim]")
+    console.print("[dim]Embed the Public Key in android/app/build.gradle.kts (buildConfigField)[/dim]")
 
 if __name__ == "__main__":
     app()

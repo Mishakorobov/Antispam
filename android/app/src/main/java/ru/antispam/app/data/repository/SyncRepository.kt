@@ -12,6 +12,7 @@ import ru.antispam.app.data.remote.AntiSpamApiService
 import ru.antispam.app.data.remote.NetworkModule
 import ru.antispam.app.data.remote.dto.BatchReportItemDto
 import ru.antispam.app.data.remote.dto.BatchReportRequestDto
+import ru.antispam.app.security.AspbCryptoVerifier
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -43,7 +44,8 @@ data class ParsedAspb(
     val isFullSync: Boolean,
     val hasMore: Boolean,
     val added: List<BlockedPoolEntity>,
-    val removed: List<Pair<Long, Long>>
+    val removed: List<Pair<Long, Long>>,
+    val signatureHex: String? = null
 )
 
 class SyncRepository(
@@ -93,6 +95,18 @@ class SyncRepository(
             val hasMore = (flags and 2) != 0
             val reserved = buffer.int
 
+            // For ASPB v2, read 64-byte Ed25519 signature
+            val signatureHex = if (protoVer == 2) {
+                if (bytes.size < 80) {
+                    throw IllegalArgumentException("Payload too short for signed ASPB v2 header: ${bytes.size} bytes")
+                }
+                val sigBytes = ByteArray(64)
+                buffer.get(sigBytes)
+                AspbCryptoVerifier.bytesToHex(sigBytes)
+            } else {
+                null
+            }
+
             // 2. Added chunk
             val addedCount = buffer.int.toLong() and 0xFFFFFFFFL
             val addedList = ArrayList<BlockedPoolEntity>(addedCount.toInt().coerceAtMost(100_000))
@@ -128,7 +142,8 @@ class SyncRepository(
                 isFullSync = isFullSync,
                 hasMore = hasMore,
                 added = addedList,
-                removed = removedList
+                removed = removedList,
+                signatureHex = signatureHex
             )
         }
 
@@ -255,6 +270,14 @@ class SyncRepository(
 
                     val bodyBytes = response.body?.bytes()
                         ?: throw IOException("Empty body received from CDN mirror $url")
+
+                    // Phase 7.2: Cryptographic Ed25519 verification before applying snapshot
+                    val verification = AspbCryptoVerifier.verifyAspbSnapshot(bodyBytes)
+                    if (!verification.isAccepted) {
+                        val breachMsg = "SECURITY_INTEGRITY_BREACH: Snapshot from $url failed cryptographic verification: $verification"
+                        Log.e(TAG, breachMsg)
+                        throw SecurityException(breachMsg)
+                    }
 
                     val parsed = parseAspbPayload(bodyBytes)
                     val now = System.currentTimeMillis()

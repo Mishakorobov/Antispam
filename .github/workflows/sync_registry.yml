@@ -46,6 +46,8 @@ jobs:
           python -m backend.cli sync --force --include-vciom
 
       - name: Compile and Export Binary ASPB Snapshot
+        env:
+          ASPB_ED25519_PRIVATE_KEY: ${{ secrets.ASPB_ED25519_PRIVATE_KEY }}
         run: |
           python -m backend.cli export-aspb --output data/pools.aspb
 
@@ -53,10 +55,15 @@ jobs:
         run: |
           python -c "
           from backend.aspb import parse_aspb_payload
+          from backend.crypto_signer import verify_aspb_file
           with open('data/pools.aspb', 'rb') as f:
               data = f.read()
           res = parse_aspb_payload(data)
-          print(f'Integrity PASS: {len(res[\"added\"])} pools, v{res[\"current_version\"]}, size {len(data)} bytes')
+          print(f'Integrity PASS: {len(res[\"added\"])} pools, v{res[\"current_version\"]}, size {len(data)} bytes, proto_v{res[\"proto_version\"]}')
+          if res['proto_version'] == 2:
+              valid, msg = verify_aspb_file('data/pools.aspb')
+              assert valid, f'Ed25519 verification failed: {msg}'
+              print('Ed25519 Cryptographic Verification: PASS')
           "
 
       - name: Compress CSV registries for mirror preservation
@@ -85,7 +92,7 @@ jobs:
           body: |
             Automated weekly build of Russian Numbering Plan (Mincifry ABC/DEF/800) and ASPB Binary Pools.
             - Generated on: ${{ github.event.head_commit.timestamp || github.event.schedule }}
-            - Protocol: ASPB v1
+            - Protocol: ASPB v2 (Ed25519 Cryptographically Signed)
           files: |
             data/pools.aspb
             data/antispam_registry.db

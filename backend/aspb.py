@@ -112,6 +112,13 @@ def parse_aspb_payload(data: bytes) -> dict[str, Any]:
     has_more = bool(flags & 2)
 
     offset = 16
+    signature_hex = None
+    if proto_ver == 2:
+        if len(data) < 80:
+            raise ValueError(f"Payload too short for signed ASPB v2 header: {len(data)} bytes (minimum 80)")
+        signature_hex = data[16:80].hex()
+        offset = 80
+
     added_count = struct.unpack(">I", data[offset:offset + 4])[0]
     offset += 4
 
@@ -146,6 +153,7 @@ def parse_aspb_payload(data: bytes) -> dict[str, Any]:
         "current_version": current_ver,
         "is_full_sync": is_full_sync,
         "has_more": has_more,
+        "signature": signature_hex,
         "added": added,
         "removed": removed,
     }
