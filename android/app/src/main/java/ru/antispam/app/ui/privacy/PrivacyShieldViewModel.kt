@@ -17,6 +17,7 @@ import ru.antispam.app.privacy.MicGuardService
 import ru.antispam.app.privacy.MicJammerManager
 import ru.antispam.app.privacy.AccessibilityAuditor
 import ru.antispam.app.privacy.ClipboardGuardManager
+import ru.antispam.app.privacy.CertificateGuardManager
 import ru.antispam.app.privacy.GeoTriangulationAuditor
 import ru.antispam.app.privacy.NotificationListenerAuditor
 import ru.antispam.app.privacy.PrivacyCategory
@@ -36,6 +37,7 @@ import ru.antispam.app.privacy.model.PackagePrivacyProfile
 import ru.antispam.app.privacy.model.SuperAppRiskLevel
 import ru.antispam.app.privacy.model.TriangulationRiskApp
 import ru.antispam.app.privacy.model.TriangulationRiskLevel
+import ru.antispam.app.privacy.model.UserInstalledCertificate
 import ru.antispam.app.util.VipModeManager
 
 data class PrivacyShieldUiState(
@@ -81,7 +83,11 @@ data class PrivacyShieldUiState(
     val showVpnGuideDialog: Boolean = false,
     val triangulationApps: List<TriangulationRiskApp> = emptyList(),
     val triangulationCriticalCount: Int = 0,
-    val triangulationHighCount: Int = 0
+    val triangulationHighCount: Int = 0,
+    val userCertificates: List<UserInstalledCertificate> = emptyList(),
+    val certMitmCriticalCount: Int = 0,
+    val certWarningCount: Int = 0,
+    val hasMitmThreat: Boolean = false
 )
 
 class PrivacyShieldViewModel(application: Application) : AndroidViewModel(application) {
@@ -178,6 +184,9 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
             // Phase 9.3: Audit stealth geo-triangulation without GPS
             val triangulationAudit = GeoTriangulationAuditor.auditSummary(getApplication())
 
+            // Phase 9.4: Audit user-installed Root CA certificates for MITM risks
+            val certAudit = CertificateGuardManager.auditCertificates(getApplication())
+
             _uiState.update {
                 it.copy(
                     scannedApps = apps,
@@ -201,7 +210,11 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
                     selectedVpnFormat = detectedVpn?.first ?: it.selectedVpnFormat,
                     triangulationApps = triangulationAudit.apps,
                     triangulationCriticalCount = triangulationAudit.criticalCount,
-                    triangulationHighCount = triangulationAudit.highCount
+                    triangulationHighCount = triangulationAudit.highCount,
+                    userCertificates = certAudit.userCertificates,
+                    certMitmCriticalCount = certAudit.criticalCount,
+                    certWarningCount = certAudit.warningCount,
+                    hasMitmThreat = certAudit.hasMitmThreat
                 )
             }
         }
@@ -217,6 +230,10 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
 
     fun openLocationSettings() {
         GeoTriangulationAuditor.openLocationSettings(getApplication())
+    }
+
+    fun openSecuritySettings() {
+        CertificateGuardManager.openSecuritySettings(getApplication())
     }
 
     fun openAppDetails(packageName: String) {

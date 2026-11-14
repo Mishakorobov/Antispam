@@ -71,6 +71,7 @@ import ru.antispam.app.privacy.VpnClientFormat
 import ru.antispam.app.privacy.VpnMaskingHelper
 import ru.antispam.app.privacy.model.AccessibilityRiskLevel
 import ru.antispam.app.privacy.model.AccessibilityServiceApp
+import ru.antispam.app.privacy.model.CertificateRiskLevel
 import ru.antispam.app.privacy.model.ListenerRiskLevel
 import ru.antispam.app.privacy.model.MaskingTargetApp
 import ru.antispam.app.privacy.model.NotificationListenerApp
@@ -79,6 +80,7 @@ import ru.antispam.app.privacy.model.RussianAppRegistry
 import ru.antispam.app.privacy.model.SuperAppRiskLevel
 import ru.antispam.app.privacy.model.TriangulationRiskApp
 import ru.antispam.app.privacy.model.TriangulationRiskLevel
+import ru.antispam.app.privacy.model.UserInstalledCertificate
 import ru.antispam.app.ui.components.AppleGroupedCard
 import ru.antispam.app.ui.components.AppleHairlineDivider
 import ru.antispam.app.ui.theme.AppleBlue
@@ -707,6 +709,19 @@ fun PrivacyShieldScreen(
                 onOpenAppDetails = { pkg ->
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                     viewModel.openAppDetails(pkg)
+                }
+            )
+        }
+
+        // Phase 9.4: Root Certificate Authority & MITM Inspector
+        item {
+            CertificateAuditCard(
+                certificates = state.userCertificates,
+                criticalCount = state.certMitmCriticalCount,
+                warningCount = state.certWarningCount,
+                onOpenSecuritySettings = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    viewModel.openSecuritySettings()
                 }
             )
         }
@@ -2111,6 +2126,196 @@ private fun TriangulationAuditCard(
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = "Настройки геолокации системы",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CertificateAuditCard(
+    certificates: List<UserInstalledCertificate>,
+    criticalCount: Int,
+    warningCount: Int,
+    onOpenSecuritySettings: () -> Unit
+) {
+    AppleGroupedCard {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (criticalCount > 0) AppleRed.copy(alpha = 0.15f)
+                            else if (warningCount > 0) AppleOrange.copy(alpha = 0.15f)
+                            else AppleMintGreen.copy(alpha = 0.15f)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (criticalCount > 0) Icons.Rounded.Warning else Icons.Rounded.Lock,
+                        contentDescription = "Certificate Icon",
+                        tint = if (criticalCount > 0) AppleRed else if (warningCount > 0) AppleOrange else AppleMintGreen,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(14.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Корневые сертификаты (Root CA)",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = if (criticalCount > 0) "Критический риск MITM-перехвата HTTPS!"
+                        else if (warningCount > 0) "Установлен государственный сертификат РФ"
+                        else "Инспекция пользовательского хранилища Android",
+                        fontSize = 13.sp,
+                        color = if (criticalCount > 0) AppleRed else if (warningCount > 0) AppleOrange else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            if (criticalCount > 0) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(AppleRed.copy(alpha = 0.12f))
+                        .padding(12.dp)
+                ) {
+                    Text(
+                        text = "🚨 КРИТИЧЕСКАЯ УГРОЗА MITM: Обнаружено $criticalCount неизвестных пользовательских Root CA. Весь ваш зашифрованный HTTPS-трафик (пароли, личные сообщения, банки) может перехватываться и расшифровываться!",
+                        fontSize = 12.sp,
+                        color = AppleRed,
+                        lineHeight = 16.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+            } else if (warningCount > 0) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(AppleOrange.copy(alpha = 0.12f))
+                        .padding(12.dp)
+                ) {
+                    Text(
+                        text = "⚠️ ВНИМАНИЕ: Установлен сертификат Минцифры РФ. Он необходим для сайтов с российскими SSL-сертификатами, однако дает операторам связи потенциальную возможность расшифровки трафика.",
+                        fontSize = 12.sp,
+                        color = AppleOrange,
+                        lineHeight = 16.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+            } else if (certificates.isEmpty()) {
+                Text(
+                    text = "Пользовательские Root CA не установлены. Ваш зашифрованный HTTPS-трафик защищен от негласного MITM-перехвата.",
+                    fontSize = 13.sp,
+                    color = AppleMintGreen
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+            }
+
+            // Display user certificates
+            certificates.take(5).forEach { cert ->
+                val badgeColor = when (cert.riskLevel) {
+                    CertificateRiskLevel.CRITICAL -> AppleRed
+                    CertificateRiskLevel.WARNING -> AppleOrange
+                    CertificateRiskLevel.MEDIUM -> AppleBlue
+                }
+                val badgeText = when (cert.riskLevel) {
+                    CertificateRiskLevel.CRITICAL -> "УГРОЗА MITM"
+                    CertificateRiskLevel.WARNING -> "МИНЦИФРЫ РФ"
+                    CertificateRiskLevel.MEDIUM -> "ФИЛЬТР ТРАФИКА"
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = cert.commonName,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        if (cert.organization.isNotBlank()) {
+                            Text(
+                                text = "Организация: ${cert.organization}",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                            )
+                        }
+                        Text(
+                            text = cert.riskDescription,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                            lineHeight = 14.sp
+                        )
+                        Text(
+                            text = "SHA-256: " + cert.sha256Fingerprint.take(23) + "...",
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(badgeColor.copy(alpha = 0.15f))
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = badgeText,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = badgeColor
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Button(
+                onClick = onOpenSecuritySettings,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (criticalCount > 0) AppleRed else AppleBlue
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Security,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = if (criticalCount > 0) "Удалить опасные сертификаты" else "Хранилище сертификатов",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold
                 )
