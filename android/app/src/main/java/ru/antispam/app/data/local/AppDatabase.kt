@@ -41,7 +41,6 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         private const val DATABASE_NAME = "antispam_local.db"
-        private const val ASSET_SEED_NAME = "antispam_registry_seed.db"
 
         @Volatile
         private var INSTANCE: AppDatabase? = null
@@ -58,14 +57,6 @@ abstract class AppDatabase : RoomDatabase() {
                 AppDatabase::class.java,
                 DATABASE_NAME
             )
-
-            // Instant offline-first initial population from pre-built asset if available
-            try {
-                context.assets.open(ASSET_SEED_NAME).close()
-                builder.createFromAsset(ASSET_SEED_NAME)
-            } catch (_: Exception) {
-                // If asset file is not present in build, proceed with clean database
-            }
 
             builder.addCallback(object : RoomDatabase.Callback() {
                 override fun onOpen(db: SupportSQLiteDatabase) {
