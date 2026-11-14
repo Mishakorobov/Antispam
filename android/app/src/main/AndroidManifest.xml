@@ -12,6 +12,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
 
     <!-- Phase 5: Call Privacy Shield & Mic Guard permissions -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
@@ -102,6 +103,25 @@
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Phase 12.1: Real-time Anti-Fraud Emergency Alert HUD Activity -->
+        <activity
+            android:name=".ui.antifraud.AntiFraudAlertActivity"
+            android:exported="false"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:launchMode="singleTop"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
+
+        <!-- Phase 12.1: Real-time Anti-Fraud SMS Receiver during active calls -->
+        <receiver
+            android:name=".antifraud.AntiFraudSmsReceiver"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_SMS">
+            <intent-filter android:priority="999">
+                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
             </intent-filter>
         </receiver>
 

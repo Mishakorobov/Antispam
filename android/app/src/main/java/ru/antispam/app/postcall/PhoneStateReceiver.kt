@@ -50,6 +50,15 @@ class PhoneStateReceiver : BroadcastReceiver() {
                     Log.d(TAG, "Outgoing call started")
                 } else {
                     Log.d(TAG, "Incoming call offhook (conversation started)")
+                    // Phase 12.1: If caller is not in contacts, arm real-time Anti-Fraud Call+SMS monitor
+                    val incomingNumber = currentIncomingNumber
+                    if (!incomingNumber.isNullOrBlank()) {
+                        val normalized = PhoneNormalizer.normalize(incomingNumber)
+                        val isContact = ContactLookupHelper.isContact(context.contentResolver, incomingNumber, normalized)
+                        if (!isContact) {
+                            ru.antispam.app.antifraud.AntiFraudCallSmsMonitor.startActiveCallMonitoring(incomingNumber)
+                        }
+                    }
                 }
 
                 // Phase 5: Start Call Privacy Shield (MicGuard monitoring) during call conversation
@@ -61,6 +70,8 @@ class PhoneStateReceiver : BroadcastReceiver() {
             TelephonyManager.EXTRA_STATE_IDLE -> {
                 // Phase 5: Stop Call Privacy Shield when conversation ends
                 ru.antispam.app.privacy.MicGuardService.stopGuard(context)
+                // Phase 12.1: Disarm Anti-Fraud Call+SMS monitor
+                ru.antispam.app.antifraud.AntiFraudCallSmsMonitor.stopActiveCallMonitoring()
 
                 val wasIncoming = isIncomingCall
                 val duration = if (callStartTime > 0) ((System.currentTimeMillis() - callStartTime) / 1000).toInt() else 0
