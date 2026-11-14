@@ -72,6 +72,8 @@ class PhoneStateReceiver : BroadcastReceiver() {
                 ru.antispam.app.privacy.MicGuardService.stopGuard(context)
                 // Phase 12.1: Disarm Anti-Fraud Call+SMS monitor
                 ru.antispam.app.antifraud.AntiFraudCallSmsMonitor.stopActiveCallMonitoring()
+                // Phase 13.2: Dismiss wearable emergency alerts
+                ru.antispam.app.service.WearableAlertManager.dismissAlert(context)
 
                 val wasIncoming = isIncomingCall
                 val duration = if (callStartTime > 0) ((System.currentTimeMillis() - callStartTime) / 1000).toInt() else 0

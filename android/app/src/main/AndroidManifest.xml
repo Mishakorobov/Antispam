@@ -13,6 +13,7 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
 
     <!-- Phase 5: Call Privacy Shield & Mic Guard permissions -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
@@ -124,6 +125,11 @@
                 <action android:name="android.provider.Telephony.SMS_RECEIVED" />
             </intent-filter>
         </receiver>
+
+        <!-- Phase 13.2: Wearable Emergency Bunker & Call Drop Receiver -->
+        <receiver
+            android:name=".service.WearableBunkerReceiver"
+            android:exported="false" />
 
     </application>
 </manifest>

@@ -186,6 +186,14 @@ class MicGuardService : Service() {
 
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.notify(ALERT_NOTIFICATION_ID, alertNotification)
+
+        // Phase 13.2: Send interactive alert to connected smartwatches via WearableExtender
+        ru.antispam.app.service.WearableAlertManager.sendWearableAlert(
+            context = this,
+            alertType = ru.antispam.app.service.WearableAlertType.MIC_EAVESDROPPING,
+            callerNumber = null,
+            detailText = alertText
+        )
     }
 
     private fun triggerVibration() {

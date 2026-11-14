@@ -183,6 +183,14 @@ object AntiFraudCallSmsMonitor {
 
             // 3. Launch HUD Activity directly
             context.startActivity(fullScreenIntent)
+
+            // 4. Phase 13.2: Send interactive alert to connected smartwatches via WearableExtender
+            ru.antispam.app.service.WearableAlertManager.sendWearableAlert(
+                context = context,
+                alertType = ru.antispam.app.service.WearableAlertType.ANTIFRAUD_SMS_OTP,
+                callerNumber = callerNumber,
+                detailText = messageSnippet
+            )
         } catch (e: Exception) {
             Log.e(TAG, "Error launching emergency notification/HUD: ${e.message}")
         }
