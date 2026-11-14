@@ -361,6 +361,9 @@ class SyncRepository(
         if (pending.isEmpty()) return
 
         Log.d(TAG, "Flushing ${pending.size} pending reports...")
+        val firstPhone = pending.firstOrNull()?.phoneNumber?.toString() ?: ""
+        val powSolution = ru.antispam.app.data.remote.PowGenerator.solve(firstPhone, deviceHash)
+
         val batchPayload = BatchReportRequestDto(
             deviceHash = deviceHash,
             reports = pending.map {
@@ -369,7 +372,9 @@ class SyncRepository(
                     category = it.category,
                     callDurationSeconds = it.callDurationSeconds
                 )
-            }
+            },
+            powNonce = powSolution.nonce,
+            powTimestamp = powSolution.timestamp
         )
 
         val targetApi = if (NetworkModule.isServerlessMode) {

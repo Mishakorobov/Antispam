@@ -82,7 +82,7 @@ async function handleBatchReports(request, env, ctx) {
     );
   }
 
-  const { device_hash, reports } = body || {};
+  const { device_hash, reports, pow_nonce, pow_timestamp } = body || {};
 
   // 1. Validate device hash
   if (
@@ -153,6 +153,28 @@ async function handleBatchReports(request, env, ctx) {
     );
   }
 
+  // 3.5. Phase 11.2: Validate Micro-Proof-of-Work (Anti-Botnet Proxy-Farm Shield)
+  const isPowProvided = pow_nonce !== undefined && pow_timestamp !== undefined;
+  const isPowRequired = env.REQUIRE_POW === "true" || env.REQUIRE_POW === true;
+
+  if (isPowRequired && !isPowProvided) {
+    return jsonResponse(
+      { error: "Missing required Proof-of-Work fields ('pow_nonce', 'pow_timestamp')" },
+      400
+    );
+  }
+
+  if (isPowProvided) {
+    const firstPhone = validReports[0]?.phone_number || "";
+    const isValidPoW = await verifyProofOfWork(firstPhone, device_hash, pow_timestamp, pow_nonce);
+    if (!isValidPoW) {
+      return jsonResponse(
+        { error: "Invalid or expired Proof-of-Work challenge solution" },
+        400
+      );
+    }
+  }
+
   // 4. Trigger GitHub Actions repository_dispatch if GITHUB_TOKEN is available
   let dispatched = false;
   let dispatchError = null;
@@ -207,4 +229,27 @@ async function handleBatchReports(request, env, ctx) {
     dispatch_error: dispatchError || undefined,
     message: "Reports accepted successfully.",
   });
+}
+
+/**
+ * Phase 11.2: Verifies Micro-Proof-of-Work (PoW) solution.
+ * Enforces 16 bits of leading zero bytes ("0000...") and +-10 minute timestamp freshness.
+ */
+async function verifyProofOfWork(phoneNumber, deviceHash, timestamp, nonce) {
+  if (typeof nonce !== "number" && typeof nonce !== "string") return false;
+  const ts = Number(timestamp);
+  if (!Number.isFinite(ts)) return false;
+
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  if (Math.abs(nowSeconds - ts) > 600) {
+    return false; // Skewed or expired timestamp
+  }
+
+  const cleanPhone = String(phoneNumber || "").replace(/\D/g, "");
+  const challenge = `${cleanPhone}:${deviceHash}:${ts}:${nonce}`;
+  const msgUint8 = new TextEncoder().encode(challenge);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", msgUint8);
+  const hashArray = new Uint8Array(hashBuffer);
+
+  return hashArray[0] === 0 && hashArray[1] === 0;
 }

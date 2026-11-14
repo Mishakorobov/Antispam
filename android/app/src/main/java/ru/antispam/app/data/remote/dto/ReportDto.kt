@@ -32,7 +32,9 @@ data class BatchReportItemDto(
 @Serializable
 data class BatchReportRequestDto(
     @SerialName("device_hash") val deviceHash: String,
-    @SerialName("reports") val reports: List<BatchReportItemDto>
+    @SerialName("reports") val reports: List<BatchReportItemDto>,
+    @SerialName("pow_nonce") val powNonce: Long? = null,
+    @SerialName("pow_timestamp") val powTimestamp: Long? = null
 )
 
 @Serializable
