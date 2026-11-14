@@ -97,7 +97,9 @@ object AntiFraudCallSmsMonitor {
         val lowerText = text.lowercase()
         val lowerSender = sender?.lowercase() ?: ""
 
-        val hasKeyword = FRAUD_KEYWORDS.any { lowerText.contains(it) || lowerSender.contains(it) }
+        val dynamicKeywords = ru.antispam.app.security.DynamicConfigManager.getDynamicAntifraudKeywords()
+        val hasKeyword = FRAUD_KEYWORDS.any { lowerText.contains(it) || lowerSender.contains(it) } ||
+                dynamicKeywords.any { lowerText.contains(it.lowercase()) || lowerSender.contains(it.lowercase()) }
         val hasOtpCode = EMBEDDED_OTP_REGEX.containsMatchIn(text)
 
         return hasKeyword && hasOtpCode

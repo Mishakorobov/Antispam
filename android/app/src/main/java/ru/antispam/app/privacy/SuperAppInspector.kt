@@ -113,8 +113,9 @@ object SuperAppInspector {
             )
         }
 
-        // 1. Known intrusive surveillance superapps / social networks / telemetry collectors
-        if (KNOWN_SURVEILLANCE_SUPERAPPS.contains(lowerPkg)) {
+        // 1. Known intrusive surveillance superapps / social networks / telemetry collectors (static + dynamic Ed25519)
+        val dynamicSpyware = ru.antispam.app.security.DynamicConfigManager.getDynamicSpywarePackages()
+        if (KNOWN_SURVEILLANCE_SUPERAPPS.contains(lowerPkg) || dynamicSpyware.any { it.equals(lowerPkg, ignoreCase = true) }) {
             return Triple(
                 SuperAppRiskLevel.CRITICAL,
                 SuperAppCategory.SURVEILLANCE_SUPERAPP,

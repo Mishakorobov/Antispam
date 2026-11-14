@@ -13,6 +13,9 @@ import ru.antispam.app.data.remote.NetworkModule
 import ru.antispam.app.data.remote.dto.BatchReportItemDto
 import ru.antispam.app.data.remote.dto.BatchReportRequestDto
 import ru.antispam.app.security.AspbCryptoVerifier
+import ru.antispam.app.security.DynamicConfig
+import ru.antispam.app.security.DynamicConfigManager
+import kotlinx.serialization.json.Json
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -46,7 +49,9 @@ data class ParsedAspb(
     val hasMore: Boolean,
     val added: List<BlockedPoolEntity>,
     val removed: List<Pair<Long, Long>>,
-    val signatureHex: String? = null
+    val signatureHex: String? = null,
+    val dynamicConfig: DynamicConfig? = null,
+    val dynamicConfigRawJson: String? = null
 )
 
 class SyncRepository(
@@ -63,6 +68,8 @@ class SyncRepository(
         const val KEY_LAST_SYNC_SOURCE = "last_sync_source"
         const val KEY_PREFERRED_CDN_MIRROR = "preferred_cdn_mirror"
         const val KEY_LAST_USED_CDN_MIRROR = "last_used_cdn_mirror"
+
+        private val dynamicConfigJsonParser = Json { ignoreUnknownKeys = true }
 
         /**
          * Multi-Vendor CDN Mirrors across distinct autonomous systems (ASNs) and jurisdictions.
@@ -114,7 +121,7 @@ class SyncRepository(
             val flags = buffer.short.toInt() and 0xFFFF
             val isFullSync = (flags and 1) != 0
             val hasMore = (flags and 2) != 0
-            val reserved = buffer.int
+            val dynamicConfigLen = buffer.int.toLong() and 0xFFFFFFFFL
 
             // For ASPB v2, read 64-byte Ed25519 signature
             val signatureHex = if (protoVer == 2) {
@@ -126,6 +133,23 @@ class SyncRepository(
                 AspbCryptoVerifier.bytesToHex(sigBytes)
             } else {
                 null
+            }
+
+            // Dynamic Config extraction if dynamicConfigLen > 0
+            var dynamicConfig: DynamicConfig? = null
+            var dynamicConfigRawJson: String? = null
+            if (dynamicConfigLen > 0L) {
+                if (buffer.remaining() < dynamicConfigLen.toInt()) {
+                    throw IllegalArgumentException("Payload too short for dynamic config JSON: ${buffer.remaining()} < $dynamicConfigLen")
+                }
+                val jsonBytes = ByteArray(dynamicConfigLen.toInt())
+                buffer.get(jsonBytes)
+                dynamicConfigRawJson = String(jsonBytes, Charsets.UTF_8)
+                try {
+                    dynamicConfig = dynamicConfigJsonParser.decodeFromString<DynamicConfig>(dynamicConfigRawJson)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to parse DynamicConfig JSON: ${e.message}")
+                }
             }
 
             // 2. Added chunk
@@ -164,7 +188,9 @@ class SyncRepository(
                 hasMore = hasMore,
                 added = addedList,
                 removed = removedList,
-                signatureHex = signatureHex
+                signatureHex = signatureHex,
+                dynamicConfig = dynamicConfig,
+                dynamicConfigRawJson = dynamicConfigRawJson
             )
         }
 
@@ -283,7 +309,9 @@ class SyncRepository(
         } catch (e: Exception) {
             null
         }
-        return prioritizeMirrors(preferred, fallbackCdnUrls)
+        val dynamicMirrors = DynamicConfigManager.getDynamicCdnMirrors()
+        val allMirrors = (dynamicMirrors + fallbackCdnUrls).distinct()
+        return prioritizeMirrors(preferred, allMirrors)
     }
 
     private suspend fun executeCdnFallback(): SyncResult {
@@ -306,8 +334,10 @@ class SyncRepository(
                     val bodyBytes = response.body?.bytes()
                         ?: throw IOException("Empty body received from CDN mirror $url")
 
-                    // Phase 7.2: Cryptographic Ed25519 verification before applying snapshot
-                    val verification = AspbCryptoVerifier.verifyAspbSnapshot(bodyBytes)
+                    val lastVersion = db.syncMetadataDao().getValueLong(KEY_LAST_DELTA_VERSION) ?: 0L
+
+                    // Phase 7.2 & 13.1: Cryptographic Ed25519 verification with anti-rollback protection
+                    val verification = AspbCryptoVerifier.verifyAspbSnapshot(bodyBytes, localStoredVersion = lastVersion)
                     if (!verification.isAccepted) {
                         val breachMsg = "SECURITY_INTEGRITY_BREACH: Snapshot from $url failed cryptographic verification: $verification"
                         Log.e(TAG, breachMsg)
@@ -317,10 +347,14 @@ class SyncRepository(
                     val parsed = parseAspbPayload(bodyBytes)
                     val now = System.currentTimeMillis()
 
-                    val lastVersion = db.syncMetadataDao().getValueLong(KEY_LAST_DELTA_VERSION) ?: 0L
                     if (parsed.currentVersion <= lastVersion && lastVersion > 0L && db.blockedPoolDao().getCount() > 0) {
                         Log.i(TAG, "CDN snapshot v${parsed.currentVersion} already applied (local is v$lastVersion). Up-to-date.")
                         return SyncResult.NotModified
+                    }
+
+                    // Apply newly verified dynamic feature flags & rules
+                    parsed.dynamicConfig?.let { dynConfig ->
+                        DynamicConfigManager.applyConfig(dynConfig, db)
                     }
 
                     db.withTransaction {

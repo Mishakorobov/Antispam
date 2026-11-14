@@ -4,6 +4,7 @@ Transfers sorted int64 intervals in compact big-endian binary format,
 providing ultra-low serialization overhead and 6x-8x size reduction.
 """
 
+import json
 import struct
 from typing import Any
 from sqlalchemy.orm import Session
@@ -37,19 +38,27 @@ def build_aspb_payload(
     has_more: bool,
     added_records: list[tuple[int, int, int, int]],  # (start: Q, end: Q, category_byte: B, version: I)
     removed_records: list[tuple[int, int, int]] = None,  # (start: Q, end: Q, version: I)
+    dynamic_config: dict[str, Any] | None = None,
 ) -> bytes:
     """
-    Serialize records into ASPB Protocol v1 binary format:
-    Header (16 bytes): 'ASPB', proto_version(H=1), current_ver(I), flags(H), reserved(I)=0
-    Flags: bit 0: is_full_sync, bit 1: has_more
-    Added: count(I) + list of (start:Q, end:Q, cat:B, ver:I) [21 bytes each]
-    Removed: count(I) + list of (start:Q, end:Q, ver:I) [20 bytes each]
+    Serialize records into ASPB Protocol binary format:
+    Header (16 bytes): 'ASPB', proto_version(H=1), current_ver(I), flags(H), dynamic_config_len(I)=0
+    Flags: bit 0: is_full_sync, bit 1: has_more, bit 2: has_dynamic_config
+    Body:
+      [dynamic_config JSON (N bytes)] (if dynamic_config_len > 0)
+      Added: count(I) + list of (start:Q, end:Q, cat:B, ver:I) [21 bytes each]
+      Removed: count(I) + list of (start:Q, end:Q, ver:I) [20 bytes each]
     """
     if removed_records is None:
         removed_records = []
 
-    flags = (1 if is_full_sync else 0) | (2 if has_more else 0)
-    header = struct.pack(">4sHIHI", b"ASPB", 1, current_ver, flags, 0)
+    config_bytes = b""
+    if dynamic_config:
+        config_bytes = json.dumps(dynamic_config, separators=(',', ':'), ensure_ascii=False).encode('utf-8')
+    dynamic_config_len = len(config_bytes)
+
+    flags = (1 if is_full_sync else 0) | (2 if has_more else 0) | (4 if dynamic_config_len > 0 else 0)
+    header = struct.pack(">4sHIHI", b"ASPB", 1, current_ver, flags, dynamic_config_len)
 
     # Added chunk
     added_bytes = bytearray(struct.pack(">I", len(added_records)))
@@ -61,7 +70,7 @@ def build_aspb_payload(
     for r_start, r_end, ver in removed_records:
         removed_bytes.extend(struct.pack(">QQI", r_start, r_end, ver))
 
-    return header + bytes(added_bytes) + bytes(removed_bytes)
+    return header + config_bytes + bytes(added_bytes) + bytes(removed_bytes)
 
 def generate_aspb_snapshot(session: Session, limit: int = 500_000) -> bytes:
     """
@@ -104,7 +113,7 @@ def parse_aspb_payload(data: bytes) -> dict[str, Any]:
     if len(data) < 16:
         raise ValueError(f"Payload too short for ASPB header: {len(data)} bytes")
 
-    magic, proto_ver, current_ver, flags, reserved = struct.unpack(">4sHIHI", data[:16])
+    magic, proto_ver, current_ver, flags, dynamic_config_len = struct.unpack(">4sHIHI", data[:16])
     if magic != b"ASPB":
         raise ValueError(f"Invalid ASPB magic header: {magic!r}")
 
@@ -118,6 +127,17 @@ def parse_aspb_payload(data: bytes) -> dict[str, Any]:
             raise ValueError(f"Payload too short for signed ASPB v2 header: {len(data)} bytes (minimum 80)")
         signature_hex = data[16:80].hex()
         offset = 80
+
+    dynamic_config = None
+    if dynamic_config_len > 0:
+        if len(data) < offset + dynamic_config_len:
+            raise ValueError(f"Payload too short for dynamic config JSON: {len(data)} bytes")
+        config_bytes = data[offset : offset + dynamic_config_len]
+        offset += dynamic_config_len
+        try:
+            dynamic_config = json.loads(config_bytes.decode("utf-8"))
+        except Exception as e:
+            raise ValueError(f"Invalid dynamic config JSON: {e}")
 
     added_count = struct.unpack(">I", data[offset:offset + 4])[0]
     offset += 4
@@ -154,6 +174,7 @@ def parse_aspb_payload(data: bytes) -> dict[str, Any]:
         "is_full_sync": is_full_sync,
         "has_more": has_more,
         "signature": signature_hex,
+        "dynamic_config": dynamic_config,
         "added": added,
         "removed": removed,
     }

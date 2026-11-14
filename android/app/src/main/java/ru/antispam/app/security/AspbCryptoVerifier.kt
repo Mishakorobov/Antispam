@@ -14,7 +14,14 @@ sealed class AspbVerificationResult {
     data class Valid(
         val version: Long,
         val isFullSync: Boolean,
-        val signatureHex: String
+        val signatureHex: String,
+        val dynamicConfigLen: Int = 0
+    ) : AspbVerificationResult()
+
+    data class RollbackDetected(
+        val incomingVersion: Long,
+        val localVersion: Long,
+        val message: String
     ) : AspbVerificationResult()
 
     data class InvalidSignature(
@@ -69,7 +76,8 @@ object AspbCryptoVerifier {
     fun verifyAspbSnapshot(
         bytes: ByteArray,
         expectedPublicKeyHex: String = DEFAULT_PUBLIC_KEY_HEX,
-        allowUnsignedInDebug: Boolean = BuildConfig.DEBUG
+        allowUnsignedInDebug: Boolean = BuildConfig.DEBUG,
+        localStoredVersion: Long = 0L
     ): AspbVerificationResult {
         if (bytes.size < ASPB_HEADER_SIZE) {
             return AspbVerificationResult.Corrupted("Payload too short for ASPB header: ${bytes.size} bytes")
@@ -89,7 +97,19 @@ object AspbCryptoVerifier {
         val protoVer = buffer.short.toInt() and 0xFFFF
         val currentVer = buffer.int.toLong() and 0xFFFFFFFFL
         val flags = buffer.short.toInt() and 0xFFFF
+        val dynamicConfigLen = buffer.int.toLong() and 0xFFFFFFFFL
         val isFullSync = (flags and 1) != 0
+
+        // Anti-Rollback Protection: prevent downgrade attacks where an attacker serves an older valid signed snapshot
+        if (localStoredVersion > 0L && currentVer < localStoredVersion) {
+            val rollbackMsg = "Anti-rollback protection: snapshot version $currentVer is older than local version $localStoredVersion"
+            Log.e(TAG, "SECURITY_ROLLBACK_ATTACK: $rollbackMsg")
+            return AspbVerificationResult.RollbackDetected(
+                incomingVersion = currentVer,
+                localVersion = localStoredVersion,
+                message = rollbackMsg
+            )
+        }
 
         // Handle ASPB v1 (Unsigned legacy format)
         if (protoVer == 1) {
@@ -139,7 +159,7 @@ object AspbCryptoVerifier {
                 )
             }
 
-            // Body starts at offset 80
+            // Body starts at offset 80 (dynamic config JSON + pool deltas)
             val bodyOffset = ASPB_V2_HEADER_SIZE
             val bodyLength = bytes.size - bodyOffset
 
@@ -152,11 +172,12 @@ object AspbCryptoVerifier {
             )
 
             return if (isValid) {
-                Log.i(TAG, "ASPB snapshot v$currentVer cryptographically verified via Ed25519! Signature: ${signatureHex.take(16)}...")
+                Log.i(TAG, "ASPB snapshot v$currentVer cryptographically verified via Ed25519! Signature: ${signatureHex.take(16)}... (dynamicConfigLen=$dynamicConfigLen)")
                 AspbVerificationResult.Valid(
                     version = currentVer,
                     isFullSync = isFullSync,
-                    signatureHex = signatureHex
+                    signatureHex = signatureHex,
+                    dynamicConfigLen = dynamicConfigLen.toInt()
                 )
             } else {
                 Log.e(TAG, "SECURITY_INTEGRITY_BREACH: Ed25519 signature mismatch! File body has been altered.")

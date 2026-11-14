@@ -34,7 +34,13 @@ object PhoneNormalizer {
         val s = number.toString()
         if (s.length == 11 && s.startsWith("7")) {
             val code = s.substring(1, 4).toIntOrNull() ?: return false
-            return code in 600..799
+            if (code in 600..799) return true
+
+            // Check dynamic spoofing prefixes delivered via ASPB v2 (e.g. "76", "77", "7940")
+            val dynamicPrefixes = ru.antispam.app.security.DynamicConfigManager.getDynamicSpoofingPrefixes()
+            if (dynamicPrefixes.any { prefix -> s.startsWith(prefix) || s.substring(1).startsWith(prefix) }) {
+                return true
+            }
         }
         return false
     }
