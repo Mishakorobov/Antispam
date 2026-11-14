@@ -17,8 +17,9 @@ enum class PrivacyRiskLevel {
 
 enum class PrivacyCategory {
     SUPERAPP_SURVEILLANCE, // 🔴 Повышенное внимание: супераппы и SDK со скрытой телеметрией (ru.vk.max, etc.)
-    TRUSTED_MESSENGER,     // 🟡 Приложения с доступом к линии: легитимные мессенджеры (Telegram, WhatsApp)
-    SYSTEM_DIALER          // 🟢 Системные компоненты: стандартный номеронабиратель (Google/Samsung), исключен из угроз
+    TRUSTED_MESSENGER,     // 🟡 Легитимные мессенджеры с доступом к линии (Telegram, WhatsApp)
+    AUDIO_ACCESS_APP,      // 🎙️ Доступ к микрофону: утилиты, диктофоны, тюнеры, голосовой поиск
+    SYSTEM_DIALER          // 🟢 Системные компоненты: стандартный номеронабиратель (Google/Samsung)
 }
 
 data class AppPrivacyRisk(
@@ -96,13 +97,32 @@ object PrivacyScannerHelper {
 
                 val appInfo = pkg.applicationInfo ?: continue
                 val isSystem = (appInfo.flags and (ApplicationInfo.FLAG_SYSTEM or ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) != 0
+                val isKnownSuperapp = pkgName.lowercase() in KNOWN_SUPERAPPS
 
-                // Phase 13.5: Audit ONLY actively GRANTED runtime permissions!
-                // An app that only requests permissions in AndroidManifest without user granting them poses NO active threat.
-                val hasPhoneState = pm.checkPermission(PERM_READ_PHONE_STATE, pkgName) == PackageManager.PERMISSION_GRANTED
-                val hasRecordAudio = pm.checkPermission(PERM_RECORD_AUDIO, pkgName) == PackageManager.PERMISSION_GRANTED
-                val hasCallLog = (pm.checkPermission(PERM_READ_CALL_LOG, pkgName) == PackageManager.PERMISSION_GRANTED) ||
-                        (pm.checkPermission(PERM_PROCESS_OUTGOING, pkgName) == PackageManager.PERMISSION_GRANTED)
+                // USER REQUIREMENT: "Системные не показывай вовсе."
+                // Pre-installed system apps are excluded from audit unless they are blacklisted superapps
+                if (isSystem && !isKnownSuperapp) {
+                    continue
+                }
+
+                // Phase 13.5 & antispam_fix.md 7.4: Audit ONLY actively GRANTED runtime permissions!
+                val reqPerms = pkg.requestedPermissions
+                val reqFlags = pkg.requestedPermissionsFlags
+                val grantedPerms = mutableSetOf<String>()
+                if (reqPerms != null && reqFlags != null) {
+                    for (i in reqPerms.indices) {
+                        if ((reqFlags[i] and android.content.pm.PackageInfo.REQUESTED_PERMISSION_GRANTED) != 0) {
+                            grantedPerms.add(reqPerms[i])
+                        }
+                    }
+                }
+
+                val hasPhoneState = (PERM_READ_PHONE_STATE in grantedPerms) &&
+                        (pm.checkPermission(PERM_READ_PHONE_STATE, pkgName) == PackageManager.PERMISSION_GRANTED)
+                val hasRecordAudio = (PERM_RECORD_AUDIO in grantedPerms) &&
+                        (pm.checkPermission(PERM_RECORD_AUDIO, pkgName) == PackageManager.PERMISSION_GRANTED)
+                val hasCallLog = ((PERM_READ_CALL_LOG in grantedPerms) && (pm.checkPermission(PERM_READ_CALL_LOG, pkgName) == PackageManager.PERMISSION_GRANTED)) ||
+                        ((PERM_PROCESS_OUTGOING in grantedPerms) && (pm.checkPermission(PERM_PROCESS_OUTGOING, pkgName) == PackageManager.PERMISSION_GRANTED))
                 val hasAccessibility = pkgName in enabledAccessibilityPackages
 
                 // Exclude any app where user has not granted any of these permissions (or revoked all of them)
@@ -126,7 +146,10 @@ object PrivacyScannerHelper {
                     isSystem = isSystem
                 )
 
-                results.add(risk)
+                // Do not show safe system apps in audit list
+                if (risk.category != PrivacyCategory.SYSTEM_DIALER) {
+                    results.add(risk)
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error scanning installed packages: ${e.message}", e)
@@ -247,11 +270,18 @@ object PrivacyScannerHelper {
                     "Сбор метаданных: доступ к журналу звонков позволяет выгружать историю и социальный граф контактов."
                 )
             }
-            hasRecordAudio -> {
+            isTrustedMessenger && hasRecordAudio -> {
                 Triple(
                     PrivacyRiskLevel.MEDIUM,
                     PrivacyCategory.TRUSTED_MESSENGER,
-                    "Доступ к микрофону: запись в активном режиме без триггера сотового вызова."
+                    "Легитимный мессенджер с доступом к микрофону."
+                )
+            }
+            hasRecordAudio -> {
+                Triple(
+                    PrivacyRiskLevel.MEDIUM,
+                    PrivacyCategory.AUDIO_ACCESS_APP,
+                    "Доступ к микрофону: запись аудио в активном режиме (распознавание речи, тюнер, аудиозапись)."
                 )
             }
             else -> {

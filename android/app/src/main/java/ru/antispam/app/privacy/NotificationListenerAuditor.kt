@@ -115,7 +115,14 @@ object NotificationListenerAuditor {
             lowerPkg.contains("watch") ||
             (lowerPkg.contains("gear") && lowerPkg.contains("plugin")) ||
             lowerPkg.contains("fit3") ||
-            lowerPkg.contains("health")
+            lowerPkg.contains("health") ||
+            lowerPkg.startsWith("com.samsung.accessory") ||
+            lowerPkg.contains("garmin") ||
+            lowerPkg.contains("fitbit") ||
+            lowerPkg.contains("polar") ||
+            lowerPkg.contains("huami") ||
+            lowerPkg.contains("amazfit") ||
+            lowerPkg.contains("zepp")
         ) {
             return Pair(
                 ListenerRiskLevel.MEDIUM,

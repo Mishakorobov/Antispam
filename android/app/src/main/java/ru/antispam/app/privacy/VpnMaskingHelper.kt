@@ -46,28 +46,65 @@ object VpnMaskingHelper {
      */
     fun getInstalledTargetApps(context: Context): List<MaskingTargetApp> {
         val pm = context.packageManager
-        val installedApps = mutableListOf<MaskingTargetApp>()
+        val installedApps = mutableMapOf<String, MaskingTargetApp>()
 
+        // 1. Check all officially cataloged entries in RussianAppRegistry
         for (target in RussianAppRegistry.TARGET_SERVICES) {
             try {
                 val appInfo = pm.getApplicationInfo(target.packageName, 0)
                 val label = pm.getApplicationLabel(appInfo).toString()
-                installedApps.add(
-                    MaskingTargetApp(
-                        packageName = target.packageName,
-                        appName = if (label.isNotBlank()) label else target.defaultName,
-                        category = target.category,
-                        isInstalled = true
-                    )
+                installedApps[target.packageName] = MaskingTargetApp(
+                    packageName = target.packageName,
+                    appName = if (label.isNotBlank()) label else target.defaultName,
+                    category = target.category,
+                    isInstalled = true
                 )
             } catch (_: PackageManager.NameNotFoundException) {
-                // Not installed on this device
+                // Not installed
             } catch (e: Exception) {
                 Log.w(TAG, "Error checking package ${target.packageName}: ${e.message}")
             }
         }
 
-        return installedApps
+        // 2. Dynamically scan all installed packages for additional Russian services (Goskey, Yandex Pay, etc.)
+        try {
+            val allPackages = pm.getInstalledPackages(0)
+            for (pkg in allPackages) {
+                val pkgName = pkg.packageName.lowercase()
+                if (installedApps.containsKey(pkg.packageName)) continue
+                if (pkgName.startsWith("ru.antispam.")) continue
+
+                val isRussianService = pkgName.startsWith("ru.") ||
+                        pkgName.contains("gosuslugi") ||
+                        pkgName.contains("goskey") ||
+                        pkgName.contains(".yandex.") ||
+                        pkgName.contains("sber") ||
+                        pkgName.contains("tcsbank") ||
+                        pkgName.contains("tinkoff") ||
+                        pkgName.contains("wildberries") ||
+                        pkgName.contains("alfabank") ||
+                        pkgName.contains("vtb") ||
+                        pkgName.contains("gazprombank") ||
+                        pkgName.contains("ozon") ||
+                        pkgName.contains("avito") ||
+                        pkgName.contains("mirpay")
+
+                if (isRussianService) {
+                    val appInfo = pkg.applicationInfo ?: continue
+                    val label = try { pm.getApplicationLabel(appInfo).toString() } catch (_: Exception) { pkg.packageName }
+                    installedApps[pkg.packageName] = MaskingTargetApp(
+                        packageName = pkg.packageName,
+                        appName = if (label.isNotBlank()) label else pkg.packageName,
+                        category = RussianAppCategory.BANKING,
+                        isInstalled = true
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error dynamically scanning Russian apps: ${e.message}")
+        }
+
+        return installedApps.values.sortedBy { it.appName.lowercase() }
     }
 
     /**
@@ -162,11 +199,11 @@ object VpnMaskingHelper {
     fun getSetupGuide(format: VpnClientFormat): List<String> {
         return when (format) {
             VpnClientFormat.V2RAYTUN -> listOf(
-                "1. Откройте v2RayTun и перейдите в «Настройки» (иконка шестеренки в правом верхнем углу).",
-                "2. Откройте раздел «Раздельное проксирование» (Per-App Proxy).",
-                "3. Включите режим «Обход выбранных приложений» (Bypass selected apps).",
-                "4. Отметьте в списке банковские сервисы и Госуслуги из скопированного списка (Сбер, Т-Банк, ВТБ, Госуслуги).",
-                "5. Переподключите VPN-профиль. Все банки и госуслуги будут работать напрямую без сбоев и блокировок!"
+                "1. Откройте v2RayTun и нажмите кнопку «Настройки» в правом нижнем углу экрана.",
+                "2. Перейдите в раздел «Маршрутизация» -> нажмите «Маршрутизация выбранных приложений».",
+                "3. Вверху переключите режим на «Обход выбранных приложений» (Bypass / Исключить).",
+                "4. В списке приложений отметьте галочками российские сервисы (банки, Госуслуги, Госключ, маркетплейсы).",
+                "5. Переподключите VPN-соединение. Теперь все отмеченные российские сервисы будут работать НАПРЯМУЮ в обход VPN, а остальной трафик пойдет через VPN!"
             )
 
             VpnClientFormat.AMNEZIA_VPN -> listOf(
@@ -234,6 +271,29 @@ object VpnMaskingHelper {
             val name = pm.getApplicationLabel(appInfo).toString()
             return Pair(VpnClientFormat.V2RAYNG_NEKOBOX, name)
         } catch (_: PackageManager.NameNotFoundException) {}
+
+        // 6. Dynamic universal detection via android.net.VpnService intent filter
+        try {
+            val vpnServices = pm.queryIntentServices(
+                Intent("android.net.VpnService"),
+                PackageManager.GET_META_DATA
+            )
+            for (resolveInfo in vpnServices) {
+                val serviceInfo = resolveInfo.serviceInfo ?: continue
+                val pkgName = serviceInfo.packageName.lowercase()
+                val label = serviceInfo.loadLabel(pm)?.toString() ?: pkgName
+                when {
+                    pkgName.contains("v2raytun") -> return Pair(VpnClientFormat.V2RAYTUN, "v2RayTun")
+                    pkgName.contains("amnezia") -> return Pair(VpnClientFormat.AMNEZIA_VPN, "AmneziaVPN")
+                    pkgName.contains("v2rayng") || pkgName.contains("nekobox") || pkgName.contains("hiddify") ||
+                            pkgName.contains("singbox") || pkgName.contains("happ") ->
+                        return Pair(VpnClientFormat.V2RAYNG_NEKOBOX, label)
+                    else -> return Pair(VpnClientFormat.RAW_PACKAGE_LIST, label)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Dynamic VPN service discovery error: ${e.message}")
+        }
 
         return null
     }

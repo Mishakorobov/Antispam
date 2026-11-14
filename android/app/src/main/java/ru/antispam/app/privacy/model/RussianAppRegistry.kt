@@ -107,6 +107,18 @@ object RussianAppRegistry {
             "Требует прямого физического интерфейса для работы"
         ),
         TargetServiceEntry(
+            "com.yandex.bank",
+            "Яндекс Пэй (Банк)",
+            RussianAppCategory.BANKING,
+            "Требует прямого соединения для NFC и платежей"
+        ),
+        TargetServiceEntry(
+            "ru.yandex.pay",
+            "Яндекс Пэй",
+            RussianAppCategory.BANKING,
+            "Блокирует операции через зарубежные IP"
+        ),
+        TargetServiceEntry(
             "ru.psbank.mobile.retail",
             "ПСБ",
             RussianAppCategory.BANKING,
@@ -145,10 +157,28 @@ object RussianAppRegistry {
 
         // --- 2. Госуслуги и Налоги ---
         TargetServiceEntry(
-            "com.gosuslugi",
+            "ru.gosuslugi",
             "Госуслуги",
             RussianAppCategory.GOVERNMENT,
             "Блокирует доступ по GeoIP при зарубежном выходе VPN"
+        ),
+        TargetServiceEntry(
+            "ru.gosuslugi.app",
+            "Госуслуги (Портал)",
+            RussianAppCategory.GOVERNMENT,
+            "Блокирует доступ по GeoIP"
+        ),
+        TargetServiceEntry(
+            "com.gosuslugi",
+            "Госуслуги (GMS)",
+            RussianAppCategory.GOVERNMENT,
+            "Блокирует доступ по GeoIP при зарубежном выходе VPN"
+        ),
+        TargetServiceEntry(
+            "ru.gosuslugi.goskey",
+            "Госключ",
+            RussianAppCategory.GOVERNMENT,
+            "Электронная подпись: требует строго прямого российского IP"
         ),
         TargetServiceEntry(
             "ru.gosuslugi2",
@@ -233,10 +263,22 @@ object RussianAppRegistry {
 
         // --- 4. Маркетплейсы, Карты и Медиа ---
         TargetServiceEntry(
-            "com.wildberries",
+            "com.wildberries.ru",
             "Wildberries",
             RussianAppCategory.MARKETPLACE_AND_MEDIA,
             "Высокие задержки и капчи при зарубежном IP"
+        ),
+        TargetServiceEntry(
+            "com.wildberries",
+            "Wildberries (Alt)",
+            RussianAppCategory.MARKETPLACE_AND_MEDIA,
+            "Высокие задержки и капчи при зарубежном IP"
+        ),
+        TargetServiceEntry(
+            "com.avito.android",
+            "Авито",
+            RussianAppCategory.MARKETPLACE_AND_MEDIA,
+            "Блокирует подачу объявлений через зарубежные IP"
         ),
         TargetServiceEntry(
             "ru.wildberries.work",

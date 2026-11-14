@@ -1291,6 +1291,7 @@ private fun AppRiskCardItem(
                 val (badgeColor, badgeText) = when (app.category) {
                     PrivacyCategory.SUPERAPP_SURVEILLANCE -> AppleRed to "Суперапп"
                     PrivacyCategory.TRUSTED_MESSENGER -> AppleOrange to "Мессенджер"
+                    PrivacyCategory.AUDIO_ACCESS_APP -> AppleBlue to "Микрофон"
                     PrivacyCategory.SYSTEM_DIALER -> AppleMintGreen to "Системный"
                 }
 

@@ -143,7 +143,7 @@ fun HeroShieldWidget(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = "База пулов: ${"%,d".format(poolsCount)}",
+                        text = "Спам-пулы: ${"%,d".format(poolsCount)} (диапазоны)",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                     )

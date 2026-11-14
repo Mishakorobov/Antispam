@@ -140,8 +140,16 @@ object GeoTriangulationAuditor {
             )
         }
 
-        // 2. Core OS system components
-        if (KNOWN_CORE_SYSTEM.contains(lowerPkg) || (isSystemApp && lowerPkg.startsWith("com.android."))) {
+        // 2. Core OS system components and trusted OEM packages
+        val isOemOrSystem = isSystemApp ||
+                KNOWN_CORE_SYSTEM.contains(lowerPkg) ||
+                lowerPkg.startsWith("com.android.") ||
+                lowerPkg.startsWith("com.google.android.") ||
+                lowerPkg.startsWith("com.samsung.") ||
+                lowerPkg.startsWith("com.sec.") ||
+                lowerPkg == "com.microsoft.appmanager"
+
+        if (isOemOrSystem && !KNOWN_SURVEILLANCE_SUPERAPPS.contains(lowerPkg)) {
             return TriangulationRiskApp(
                 packageName = packageName,
                 appName = appName,
@@ -149,7 +157,7 @@ object GeoTriangulationAuditor {
                 riskLevel = TriangulationRiskLevel.SAFE,
                 capabilities = caps,
                 activeVectorsCount = vectorCount,
-                riskDescription = "Системный сервис Android OS.",
+                riskDescription = "Системный сервис Android OS / производителя.",
                 warningBadges = badges
             )
         }
@@ -227,22 +235,52 @@ object GeoTriangulationAuditor {
         val myPackage = context.packageName
         val results = mutableListOf<TriangulationRiskApp>()
 
+        // 1. Check if system-wide Location is enabled on the device
+        val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? android.location.LocationManager
+        val isLocationGloballyEnabled = try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                locationManager?.isLocationEnabled ?: false
+            } else {
+                Settings.Secure.getInt(context.contentResolver, Settings.Secure.LOCATION_MODE, Settings.Secure.LOCATION_MODE_OFF) != Settings.Secure.LOCATION_MODE_OFF
+            }
+        } catch (_: Exception) {
+            true
+        }
+
+        // If GPS / Location is completely switched off in Android system settings,
+        // no apps can receive satellite fixes, BSSID scans, or Cell ID triangulation!
+        if (!isLocationGloballyEnabled) {
+            Log.d(TAG, "Location is globally disabled on device. Triangulation risks are inactive.")
+            return emptyList()
+        }
+
         try {
             val installedPackages = pm.getInstalledPackages(PackageManager.GET_PERMISSIONS)
             for (pkg in installedPackages) {
                 val pkgName = pkg.packageName
                 if (pkgName == myPackage) continue
 
-                val requestedPerms = pkg.requestedPermissions?.toSet() ?: emptySet()
-                val caps = extractCapabilities(requestedPerms)
+                // Phase 13.5: Audit ONLY actively GRANTED runtime permissions!
+                val reqPerms = pkg.requestedPermissions
+                val reqFlags = pkg.requestedPermissionsFlags
+                val grantedPerms = mutableSetOf<String>()
+                if (reqPerms != null && reqFlags != null) {
+                    for (i in reqPerms.indices) {
+                        if ((reqFlags[i] and android.content.pm.PackageInfo.REQUESTED_PERMISSION_GRANTED) != 0) {
+                            grantedPerms.add(reqPerms[i])
+                        }
+                    }
+                }
+
+                val caps = extractCapabilities(grantedPerms)
                 val hasAnyLocation = caps.hasGpsLocation || caps.hasCoarseLocation
 
-                // Skip apps that don't request any location permission
+                // Skip apps that don't hold active granted location permissions
                 if (!hasAnyLocation) continue
 
                 val appInfo = pkg.applicationInfo
                 val isSystem = if (appInfo != null) {
-                    (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+                    (appInfo.flags and (ApplicationInfo.FLAG_SYSTEM or ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) != 0
                 } else false
 
                 val appName = if (appInfo != null) {
@@ -253,7 +291,7 @@ object GeoTriangulationAuditor {
                     }
                 } else pkgName
 
-                val appRisk = classifyRisk(pkgName, appName, requestedPerms, isSystem)
+                val appRisk = classifyRisk(pkgName, appName, grantedPerms, isSystem)
 
                 // Only include apps with actionable risks (CRITICAL, HIGH, MEDIUM)
                 if (appRisk.riskLevel != TriangulationRiskLevel.SAFE) {

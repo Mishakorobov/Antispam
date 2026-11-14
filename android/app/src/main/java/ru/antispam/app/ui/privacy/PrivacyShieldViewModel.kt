@@ -199,7 +199,14 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
         refreshScan()
     }
 
-    fun refreshScan() {
+    private var lastScanTimeMs = 0L
+
+    fun refreshScan(force: Boolean = false) {
+        val now = System.currentTimeMillis()
+        if (!force && now - lastScanTimeMs < 10_000L && _uiState.value.scannedApps.isNotEmpty()) {
+            return
+        }
+        lastScanTimeMs = now
         _uiState.update { it.copy(isScanning = true) }
         viewModelScope.launch(Dispatchers.IO) {
             val apps = PrivacyScannerHelper.scanInstalledApps(getApplication())
@@ -312,19 +319,19 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
                     } catch (e: Exception) {
                         android.util.Log.e("PrivacyShieldVM", "Failed to update registry: ${e.message}")
                     }
-                    refreshScan()
+                    refreshScan(force = true)
                 }
             }
             SecurityIssueType.MIC_GUARD_DISABLED -> {
                 toggleMicGuard(true)
-                refreshScan()
+                refreshScan(force = true)
             }
             SecurityIssueType.NOTIFICATION_SPY_DETECTED -> {
                 openNotificationListenerSettings()
             }
             SecurityIssueType.CLIPBOARD_GUARD_DISABLED -> {
                 toggleClipboardGuard(true)
-                refreshScan()
+                refreshScan(force = true)
             }
             SecurityIssueType.MITM_ROOT_CA_DETECTED -> {
                 openSecuritySettings()

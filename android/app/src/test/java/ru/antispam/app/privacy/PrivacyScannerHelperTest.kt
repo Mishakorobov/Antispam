@@ -132,8 +132,40 @@ class PrivacyScannerHelperTest {
         )
 
         assertEquals(PrivacyRiskLevel.MEDIUM, risk.riskLevel)
-        assertEquals(PrivacyCategory.TRUSTED_MESSENGER, risk.category)
+        assertEquals(PrivacyCategory.AUDIO_ACCESS_APP, risk.category)
         assertTrue(risk.riskDescription.contains("микрофон"))
+    }
+
+    @Test
+    fun testClassifyRisk_GuitarTunaAndDuolingoAreNotMessengers() {
+        // Guitar tuner or language learning apps requesting mic must be AUDIO_ACCESS_APP, NEVER TRUSTED_MESSENGER
+        val tunerRisk = PrivacyScannerHelper.classifyRisk(
+            appName = "GuitarTuna",
+            packageName = "com.ovelin.guitartuna",
+            hasPhoneState = false,
+            hasRecordAudio = true,
+            hasCallLog = false,
+            hasAccessibility = false,
+            isSystem = false
+        )
+
+        assertEquals(PrivacyRiskLevel.MEDIUM, tunerRisk.riskLevel)
+        assertEquals(PrivacyCategory.AUDIO_ACCESS_APP, tunerRisk.category)
+        assertFalse(tunerRisk.category == PrivacyCategory.TRUSTED_MESSENGER)
+
+        val duolingoRisk = PrivacyScannerHelper.classifyRisk(
+            appName = "Duolingo",
+            packageName = "com.duolingo",
+            hasPhoneState = false,
+            hasRecordAudio = true,
+            hasCallLog = false,
+            hasAccessibility = false,
+            isSystem = false
+        )
+
+        assertEquals(PrivacyRiskLevel.MEDIUM, duolingoRisk.riskLevel)
+        assertEquals(PrivacyCategory.AUDIO_ACCESS_APP, duolingoRisk.category)
+        assertFalse(duolingoRisk.category == PrivacyCategory.TRUSTED_MESSENGER)
     }
 
     @Test

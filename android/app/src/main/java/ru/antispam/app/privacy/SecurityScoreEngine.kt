@@ -180,7 +180,7 @@ object SecurityScoreEngine {
                     id = "stealth_geo_detected",
                     type = SecurityIssueType.STEALTH_GEO_DETECTED,
                     title = "Скрытая триангуляция без GPS",
-                    description = "Приложения определяют физический адрес до квартиры через сканирование Wi-Fi BSSID и вышек связи.",
+                    description = "Сторонние приложения имеют доступ к геопозиции и могут триангулировать адрес через Wi-Fi BSSID и вышки связи. Отключите геолокацию или отзовите доступ в настройках.",
                     severity = SecurityIssueSeverity.HIGH,
                     scoreDeduction = PENALTY_STEALTH_GEO,
                     actionLabel = "Настроить геолокацию"
