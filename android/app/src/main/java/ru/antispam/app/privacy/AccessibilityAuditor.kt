@@ -142,6 +142,14 @@ object AccessibilityAuditor {
                 val isSystem = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
                 val appName = pm.getApplicationLabel(appInfo).toString()
                 val (riskLevel, riskDesc) = classifyRisk(pkgName, isSystem)
+                val isDeepSleeping = AppDormancyHelper.isAppInDeepSleep(context, pkgName)
+
+                val finalRiskLevel = if (isDeepSleeping) AccessibilityRiskLevel.SAFE else riskLevel
+                val finalRiskDesc = if (isDeepSleeping) {
+                    "Приложение находится в глубоком сне (заморожено системой). Спецвозможности неактивны в фоновом режиме."
+                } else {
+                    riskDesc
+                }
 
                 apps.add(
                     AccessibilityServiceApp(
@@ -149,22 +157,23 @@ object AccessibilityAuditor {
                         appName = appName,
                         serviceName = serviceName,
                         isSystemApp = isSystem,
-                        riskLevel = riskLevel,
-                        riskDescription = riskDesc,
-                        isTrusted = isTrusted
+                        riskLevel = finalRiskLevel,
+                        riskDescription = finalRiskDesc,
+                        isTrusted = isTrusted,
+                        isDeepSleeping = isDeepSleeping
                     )
                 )
             } catch (e: PackageManager.NameNotFoundException) {
-                val (riskLevel, riskDesc) = classifyRisk(pkgName, isSystemApp = false)
                 apps.add(
                     AccessibilityServiceApp(
                         packageName = pkgName,
                         appName = pkgName,
                         serviceName = serviceName,
                         isSystemApp = false,
-                        riskLevel = riskLevel,
-                        riskDescription = "$riskDesc (Пакет удален или недоступен)",
-                        isTrusted = isTrusted
+                        riskLevel = AccessibilityRiskLevel.SAFE,
+                        riskDescription = "Пакет удален или недоступен. Угроза отсутствует.",
+                        isTrusted = isTrusted,
+                        isDeepSleeping = true
                     )
                 )
             } catch (e: Exception) {

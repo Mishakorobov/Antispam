@@ -31,5 +31,6 @@ data class AccessibilityServiceApp(
     val isSystemApp: Boolean,
     val riskLevel: AccessibilityRiskLevel,
     val riskDescription: String,
-    val isTrusted: Boolean = false
+    val isTrusted: Boolean = false,
+    val isDeepSleeping: Boolean = false
 )

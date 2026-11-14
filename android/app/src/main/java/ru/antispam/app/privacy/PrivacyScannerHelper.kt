@@ -32,7 +32,8 @@ data class AppPrivacyRisk(
     val hasCallLog: Boolean,
     val hasAccessibility: Boolean,
     val riskDescription: String,
-    val isSystemApp: Boolean = false
+    val isSystemApp: Boolean = false,
+    val isDeepSleeping: Boolean = false
 )
 
 object PrivacyScannerHelper {
@@ -146,9 +147,20 @@ object PrivacyScannerHelper {
                     isSystem = isSystem
                 )
 
+                val isDeepSleeping = AppDormancyHelper.isAppInDeepSleep(context, pkgName)
+                val finalRisk = if (isDeepSleeping) {
+                    risk.copy(
+                        riskLevel = PrivacyRiskLevel.SAFE,
+                        riskDescription = "Приложение находится в глубоком сне (Samsung One UI). Фоновая активность заморожена.",
+                        isDeepSleeping = true
+                    )
+                } else {
+                    risk
+                }
+
                 // Do not show safe system apps in audit list
-                if (risk.category != PrivacyCategory.SYSTEM_DIALER) {
-                    results.add(risk)
+                if (finalRisk.category != PrivacyCategory.SYSTEM_DIALER) {
+                    results.add(finalRisk)
                 }
             }
         } catch (e: Exception) {

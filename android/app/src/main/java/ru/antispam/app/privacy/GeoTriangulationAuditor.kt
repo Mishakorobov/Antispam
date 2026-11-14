@@ -292,10 +292,22 @@ object GeoTriangulationAuditor {
                 } else pkgName
 
                 val appRisk = classifyRisk(pkgName, appName, grantedPerms, isSystem)
+                val isDeepSleeping = AppDormancyHelper.isAppInDeepSleep(context, pkgName)
 
-                // Only include apps with actionable risks (CRITICAL, HIGH, MEDIUM)
-                if (appRisk.riskLevel != TriangulationRiskLevel.SAFE) {
-                    results.add(appRisk)
+                val finalRisk = if (isDeepSleeping) {
+                    appRisk.copy(
+                        riskLevel = TriangulationRiskLevel.SAFE,
+                        riskDescription = "Приложение находится в глубоком сне (заморожено системой). Фоновый сбор геопозиции и Wi-Fi BSSID заблокирован.",
+                        warningBadges = listOf("Глубокий сон"),
+                        isDeepSleeping = true
+                    )
+                } else {
+                    appRisk
+                }
+
+                // Only include apps with actionable risks or deep sleep info if previously risky
+                if (finalRisk.riskLevel != TriangulationRiskLevel.SAFE || isDeepSleeping) {
+                    results.add(finalRisk)
                 }
             }
         } catch (e: Exception) {
@@ -317,8 +329,8 @@ object GeoTriangulationAuditor {
      */
     fun auditSummary(context: Context): TriangulationAuditSummary {
         val apps = auditLocationAndWifiPermissions(context)
-        val critical = apps.count { it.riskLevel == TriangulationRiskLevel.CRITICAL }
-        val high = apps.count { it.riskLevel == TriangulationRiskLevel.HIGH }
+        val critical = apps.count { it.riskLevel == TriangulationRiskLevel.CRITICAL && !it.isDeepSleeping }
+        val high = apps.count { it.riskLevel == TriangulationRiskLevel.HIGH && !it.isDeepSleeping }
 
         return TriangulationAuditSummary(
             apps = apps,

@@ -48,7 +48,8 @@ data class TriangulationRiskApp(
     val capabilities: TriangulationCapabilities,
     val activeVectorsCount: Int,
     val riskDescription: String,
-    val warningBadges: List<String>
+    val warningBadges: List<String>,
+    val isDeepSleeping: Boolean = false
 )
 
 /**

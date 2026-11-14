@@ -1288,11 +1288,12 @@ private fun AppRiskCardItem(
                 }
 
                 // Category & Risk Badge
-                val (badgeColor, badgeText) = when (app.category) {
-                    PrivacyCategory.SUPERAPP_SURVEILLANCE -> AppleRed to "Суперапп"
-                    PrivacyCategory.TRUSTED_MESSENGER -> AppleOrange to "Мессенджер"
-                    PrivacyCategory.AUDIO_ACCESS_APP -> AppleBlue to "Микрофон"
-                    PrivacyCategory.SYSTEM_DIALER -> AppleMintGreen to "Системный"
+                val (badgeColor, badgeText) = when {
+                    app.isDeepSleeping -> AppleMintGreen to "Глубокий сон"
+                    app.category == PrivacyCategory.SUPERAPP_SURVEILLANCE -> AppleRed to "Суперапп"
+                    app.category == PrivacyCategory.TRUSTED_MESSENGER -> AppleOrange to "Мессенджер"
+                    app.category == PrivacyCategory.AUDIO_ACCESS_APP -> AppleBlue to "Микрофон"
+                    else -> AppleMintGreen to "Системный"
                 }
 
                 Box(
@@ -1478,12 +1479,14 @@ private fun NotificationListenerAuditCard(
             listeners.take(5).forEach { listener ->
                 val badgeColor = when {
                     listener.isTrusted -> AppleMintGreen
+                    listener.isDeepSleeping -> AppleMintGreen
                     listener.riskLevel == ListenerRiskLevel.HIGH -> AppleRed
                     listener.riskLevel == ListenerRiskLevel.MEDIUM -> AppleOrange
                     else -> AppleMintGreen
                 }
                 val badgeText = when {
                     listener.isTrusted -> "Доверено"
+                    listener.isDeepSleeping -> "Глубокий сон"
                     listener.riskLevel == ListenerRiskLevel.HIGH -> "ОПАСНО: СМС/2FA"
                     listener.riskLevel == ListenerRiskLevel.MEDIUM -> "Носимое устройство"
                     else -> "Система"
@@ -1667,12 +1670,14 @@ private fun AccessibilityAuditCard(
             services.take(5).forEach { service ->
                 val badgeColor = when {
                     service.isTrusted -> AppleMintGreen
+                    service.isDeepSleeping -> AppleMintGreen
                     service.riskLevel == AccessibilityRiskLevel.CRITICAL -> AppleRed
                     service.riskLevel == AccessibilityRiskLevel.MEDIUM -> AppleOrange
                     else -> AppleMintGreen
                 }
                 val badgeText = when {
                     service.isTrusted -> "Доверено"
+                    service.isDeepSleeping -> "Глубокий сон"
                     service.riskLevel == AccessibilityRiskLevel.CRITICAL -> "КРИТИЧНО"
                     service.riskLevel == AccessibilityRiskLevel.MEDIUM -> "OEM Система"
                     else -> "Доверенный AOSP"
@@ -1878,17 +1883,19 @@ private fun SuperAppAuditCard(
 
             // Display top apps with QUERY_ALL_PACKAGES
             profiles.take(5).forEach { profile ->
-                val badgeColor = when (profile.riskLevel) {
-                    SuperAppRiskLevel.CRITICAL -> AppleRed
-                    SuperAppRiskLevel.HIGH -> AppleOrange
-                    SuperAppRiskLevel.MEDIUM -> AppleBlue
-                    SuperAppRiskLevel.SAFE -> AppleMintGreen
+                val badgeColor = when {
+                    profile.isDeepSleeping -> AppleMintGreen
+                    profile.riskLevel == SuperAppRiskLevel.CRITICAL -> AppleRed
+                    profile.riskLevel == SuperAppRiskLevel.HIGH -> AppleOrange
+                    profile.riskLevel == SuperAppRiskLevel.MEDIUM -> AppleBlue
+                    else -> AppleMintGreen
                 }
-                val badgeText = when (profile.riskLevel) {
-                    SuperAppRiskLevel.CRITICAL -> "СУПЕРАПП"
-                    SuperAppRiskLevel.HIGH -> "ТРЕКЕР"
-                    SuperAppRiskLevel.MEDIUM -> "УТИЛИТА"
-                    SuperAppRiskLevel.SAFE -> "СИСТЕМА"
+                val badgeText = when {
+                    profile.isDeepSleeping -> "Глубокий сон"
+                    profile.riskLevel == SuperAppRiskLevel.CRITICAL -> "СУПЕРАПП"
+                    profile.riskLevel == SuperAppRiskLevel.HIGH -> "ТРЕКЕР"
+                    profile.riskLevel == SuperAppRiskLevel.MEDIUM -> "УТИЛИТА"
+                    else -> "СИСТЕМА"
                 }
 
                 Row(
@@ -2337,17 +2344,19 @@ private fun TriangulationAuditCard(
 
             // Top apps display
             apps.take(5).forEach { app ->
-                val badgeColor = when (app.riskLevel) {
-                    TriangulationRiskLevel.CRITICAL -> AppleRed
-                    TriangulationRiskLevel.HIGH -> AppleOrange
-                    TriangulationRiskLevel.MEDIUM -> AppleBlue
-                    TriangulationRiskLevel.SAFE -> AppleMintGreen
+                val badgeColor = when {
+                    app.isDeepSleeping -> AppleMintGreen
+                    app.riskLevel == TriangulationRiskLevel.CRITICAL -> AppleRed
+                    app.riskLevel == TriangulationRiskLevel.HIGH -> AppleOrange
+                    app.riskLevel == TriangulationRiskLevel.MEDIUM -> AppleBlue
+                    else -> AppleMintGreen
                 }
-                val badgeText = when (app.riskLevel) {
-                    TriangulationRiskLevel.CRITICAL -> "ТРИАНГУЛЯЦИЯ"
-                    TriangulationRiskLevel.HIGH -> "СБОР BSSID/ВЫШЕК"
-                    TriangulationRiskLevel.MEDIUM -> "НАВИГАТОР/ГЕО"
-                    TriangulationRiskLevel.SAFE -> "СИСТЕМА"
+                val badgeText = when {
+                    app.isDeepSleeping -> "Глубокий сон"
+                    app.riskLevel == TriangulationRiskLevel.CRITICAL -> "ТРИАНГУЛЯЦИЯ"
+                    app.riskLevel == TriangulationRiskLevel.HIGH -> "СБОР BSSID/ВЫШЕК"
+                    app.riskLevel == TriangulationRiskLevel.MEDIUM -> "НАВИГАТОР/ГЕО"
+                    else -> "СИСТЕМА"
                 }
 
                 Row(

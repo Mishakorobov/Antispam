@@ -210,21 +210,21 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
         _uiState.update { it.copy(isScanning = true) }
         viewModelScope.launch(Dispatchers.IO) {
             val apps = PrivacyScannerHelper.scanInstalledApps(getApplication())
-            val criticalCount = apps.count { it.riskLevel == PrivacyRiskLevel.CRITICAL }
-            val highCount = apps.count { it.riskLevel == PrivacyRiskLevel.HIGH }
-            val superapps = apps.count { it.category == PrivacyCategory.SUPERAPP_SURVEILLANCE }
-            val messengers = apps.count { it.category == PrivacyCategory.TRUSTED_MESSENGER }
+            val criticalCount = apps.count { it.riskLevel == PrivacyRiskLevel.CRITICAL && !it.isDeepSleeping }
+            val highCount = apps.count { it.riskLevel == PrivacyRiskLevel.HIGH && !it.isDeepSleeping }
+            val superapps = apps.count { it.category == PrivacyCategory.SUPERAPP_SURVEILLANCE && !it.isDeepSleeping }
+            val messengers = apps.count { it.category == PrivacyCategory.TRUSTED_MESSENGER && !it.isDeepSleeping }
             val systems = apps.count { it.category == PrivacyCategory.SYSTEM_DIALER }
 
             // Phase 8.1 & 11.3: Audit apps with active NotificationListener access
             val trustedListeners = TrustedAppManager.getTrustedNotificationListeners(getApplication())
             val listeners = NotificationListenerAuditor.getEnabledNotificationListeners(getApplication(), trustedListeners)
-            val highRiskListeners = listeners.count { it.riskLevel == ListenerRiskLevel.HIGH && !it.isTrusted }
+            val highRiskListeners = listeners.count { it.riskLevel == ListenerRiskLevel.HIGH && !it.isTrusted && !it.isDeepSleeping }
 
             // Phase 8.3 & 11.3: Audit apps with active AccessibilityService access
             val trustedAccessibility = TrustedAppManager.getTrustedAccessibilityServices(getApplication())
             val accessibility = AccessibilityAuditor.getActiveAccessibilityServices(getApplication(), trustedAccessibility)
-            val criticalAccess = accessibility.count { it.riskLevel == AccessibilityRiskLevel.CRITICAL && !it.isTrusted }
+            val criticalAccess = accessibility.count { it.riskLevel == AccessibilityRiskLevel.CRITICAL && !it.isTrusted && !it.isDeepSleeping }
 
             // Phase 9.1: Audit apps with QUERY_ALL_PACKAGES & inventory of VPN clients
             val superAppAudit = SuperAppInspector.auditSuperApps(getApplication())
@@ -557,7 +557,7 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
                 it.copy(isTrusted = trustedSet.contains(it.packageName.lowercase()))
             }
         }
-        val highRiskCount = updatedListeners.count { it.riskLevel == ListenerRiskLevel.HIGH && !it.isTrusted }
+        val highRiskCount = updatedListeners.count { it.riskLevel == ListenerRiskLevel.HIGH && !it.isTrusted && !it.isDeepSleeping }
 
         _uiState.update { state ->
             val hasRootAdvisory = state.securityScoreReport?.issues?.any { it.type == SecurityIssueType.ROOT_OR_HOOK_ENVIRONMENT } == true
@@ -599,7 +599,7 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
                 it.copy(isTrusted = trustedSet.contains(it.packageName.lowercase()))
             }
         }
-        val criticalCount = updatedServices.count { it.riskLevel == AccessibilityRiskLevel.CRITICAL && !it.isTrusted }
+        val criticalCount = updatedServices.count { it.riskLevel == AccessibilityRiskLevel.CRITICAL && !it.isTrusted && !it.isDeepSleeping }
 
         _uiState.update { state ->
             val hasRootAdvisory = state.securityScoreReport?.issues?.any { it.type == SecurityIssueType.ROOT_OR_HOOK_ENVIRONMENT } == true

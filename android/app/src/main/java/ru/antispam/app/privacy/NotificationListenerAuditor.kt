@@ -181,6 +181,14 @@ object NotificationListenerAuditor {
                 val isSystem = (appInfo.flags and (ApplicationInfo.FLAG_SYSTEM or ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) != 0
                 val appName = pm.getApplicationLabel(appInfo).toString()
                 val (riskLevel, riskDesc) = classifyRisk(pkgName, isSystem)
+                val isDeepSleeping = AppDormancyHelper.isAppInDeepSleep(context, pkgName)
+
+                val finalRiskLevel = if (isDeepSleeping) ListenerRiskLevel.SAFE else riskLevel
+                val finalRiskDesc = if (isDeepSleeping) {
+                    "Приложение находится в глубоком сне (заморожено системой). Перехват уведомлений в фоновом режиме заблокирован."
+                } else {
+                    riskDesc
+                }
 
                 apps.add(
                     NotificationListenerApp(
@@ -188,23 +196,24 @@ object NotificationListenerAuditor {
                         appName = appName,
                         serviceName = serviceName,
                         isSystemApp = isSystem,
-                        riskLevel = riskLevel,
-                        riskDescription = riskDesc,
-                        isTrusted = isTrusted
+                        riskLevel = finalRiskLevel,
+                        riskDescription = finalRiskDesc,
+                        isTrusted = isTrusted,
+                        isDeepSleeping = isDeepSleeping
                     )
                 )
             } catch (e: PackageManager.NameNotFoundException) {
-                // App uninstalled but still in settings string
-                val (riskLevel, riskDesc) = classifyRisk(pkgName, isSystemApp = false)
+                // App uninstalled but still in settings string - cannot eavesdrop
                 apps.add(
                     NotificationListenerApp(
                         packageName = pkgName,
                         appName = pkgName,
                         serviceName = serviceName,
                         isSystemApp = false,
-                        riskLevel = riskLevel,
-                        riskDescription = "$riskDesc (Пакет удален или недоступен)",
-                        isTrusted = isTrusted
+                        riskLevel = ListenerRiskLevel.SAFE,
+                        riskDescription = "Пакет удален или недоступен. Угроза отсутствует.",
+                        isTrusted = isTrusted,
+                        isDeepSleeping = true
                     )
                 )
             } catch (e: Exception) {

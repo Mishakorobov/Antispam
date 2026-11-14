@@ -240,6 +240,14 @@ object SuperAppInspector {
                 } else pkgName
 
                 val (riskLevel, category, riskDesc) = classifyRisk(pkgName, requestedPerms, isSystem)
+                val isDeepSleeping = AppDormancyHelper.isAppInDeepSleep(context, pkgName)
+                val finalRiskLevel = if (isDeepSleeping) SuperAppRiskLevel.SAFE else riskLevel
+                val finalCategory = if (isDeepSleeping) SuperAppCategory.REGULAR_APP else category
+                val finalDesc = if (isDeepSleeping) {
+                    "Приложение находится в глубоком сне (заморожено системой). Фоновое сканирование установленных приложений заблокировано."
+                } else {
+                    riskDesc
+                }
                 val capabilities = buildCapabilities(requestedPerms, hasVpnInstalled)
 
                 results.add(
@@ -248,10 +256,11 @@ object SuperAppInspector {
                         appName = appName,
                         isSystemApp = isSystem,
                         hasQueryAllPackages = true,
-                        riskLevel = riskLevel,
-                        category = category,
-                        riskDescription = riskDesc,
-                        detectedCapabilities = capabilities
+                        riskLevel = finalRiskLevel,
+                        category = finalCategory,
+                        riskDescription = finalDesc,
+                        detectedCapabilities = capabilities,
+                        isDeepSleeping = isDeepSleeping
                     )
                 )
             }
@@ -276,8 +285,8 @@ object SuperAppInspector {
     fun auditSuperApps(context: Context): SuperAppAuditSummary {
         val apps = scanPackagesWithQueryAll(context)
         val vpns = detectInstalledVpnClients(context)
-        val critical = apps.count { it.riskLevel == SuperAppRiskLevel.CRITICAL }
-        val high = apps.count { it.riskLevel == SuperAppRiskLevel.HIGH }
+        val critical = apps.count { it.riskLevel == SuperAppRiskLevel.CRITICAL && !it.isDeepSleeping }
+        val high = apps.count { it.riskLevel == SuperAppRiskLevel.HIGH && !it.isDeepSleeping }
 
         val isExposed = vpns.isNotEmpty() && (critical + high > 0)
 

@@ -33,5 +33,6 @@ data class NotificationListenerApp(
     val riskLevel: ListenerRiskLevel,
     val riskDescription: String,
     val installedDate: Long = 0L,
-    val isTrusted: Boolean = false
+    val isTrusted: Boolean = false,
+    val isDeepSleeping: Boolean = false
 )
