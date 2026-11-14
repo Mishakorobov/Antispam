@@ -1,5 +1,9 @@
 package ru.antispam.app.ui.settings
 
+import android.app.Activity
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -25,6 +29,7 @@ import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -35,20 +40,26 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import ru.antispam.app.privacy.FamilyLockManager
 import ru.antispam.app.privacy.model.ProtectionPreset
 import ru.antispam.app.ui.components.AppleGroupedCard
 import ru.antispam.app.ui.components.AppleHairlineDivider
@@ -65,6 +76,78 @@ fun SettingsScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val haptic = LocalHapticFeedback.current
+    val context = LocalContext.current
+
+    var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var showNoSecurityDialog by remember { mutableStateOf(false) }
+
+    val authLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            pendingAction?.invoke()
+            pendingAction = null
+        } else {
+            pendingAction = null
+            Toast.makeText(context, "Подтверждение отклонено: настройки защищены", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val requestAuthAction: (String, () -> Unit) -> Unit = { title, action ->
+        if (!state.isDeviceSecure) {
+            pendingAction = action
+            showNoSecurityDialog = true
+        } else {
+            val intent = FamilyLockManager.createConfirmDeviceCredentialIntent(
+                context = context,
+                title = "Семейный замок: $title",
+                description = "Для изменения настроек защиты подтвердите личность PIN-кодом или отпечатком пальца"
+            )
+            if (intent != null) {
+                pendingAction = action
+                authLauncher.launch(intent)
+            } else {
+                pendingAction = action
+                showNoSecurityDialog = true
+            }
+        }
+    }
+
+    if (showNoSecurityDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                pendingAction = null
+                showNoSecurityDialog = false
+            },
+            title = {
+                Text(text = "Семейный замок", fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Text(text = "На этом устройстве не установлена системная блокировка экрана (PIN/отпечаток). Рекомендуется включить её в настройках Android для полной защиты от случайного отключения фильтрации.\n\nПодтвердить изменение настроек?")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingAction?.invoke()
+                        pendingAction = null
+                        showNoSecurityDialog = false
+                    }
+                ) {
+                    Text("Разрешить", color = AppleBlue, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        pendingAction = null
+                        showNoSecurityDialog = false
+                    }
+                ) {
+                    Text("Отмена", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                }
+            }
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -121,12 +204,89 @@ fun SettingsScreen(
                             isSelected = state.activePreset == preset,
                             onSelect = {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                viewModel.applyProtectionPreset(preset)
+                                if (state.isFamilyLockEnabled) {
+                                    requestAuthAction("Смена профиля защиты") {
+                                        viewModel.applyProtectionPreset(preset)
+                                    }
+                                } else {
+                                    viewModel.applyProtectionPreset(preset)
+                                }
                             }
                         )
                         if (index < ProtectionPreset.entries.size - 1) {
                             AppleHairlineDivider()
                         }
+                    }
+                }
+            }
+
+            // Section 1.5: Phase 11.5 Режим «Семейный замок / Защита родителей»
+            item {
+                SectionHeader("СЕМЕЙНЫЙ ЗАМОК (ЗАЩИТА РОДИТЕЛЕЙ)")
+                AppleGroupedCard {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (state.isFamilyLockEnabled) AppleMintGreen.copy(alpha = 0.15f)
+                                    else MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Lock,
+                                contentDescription = "Family Lock",
+                                tint = if (state.isFamilyLockEnabled) AppleMintGreen else MaterialTheme.colorScheme.outline,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(14.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Закрепить профиль защиты",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = if (state.isFamilyLockEnabled)
+                                    "Активен: настройки защищены биометрией или системным PIN-кодом"
+                                else
+                                    "Защита от случайного отключения фильтрации пожилыми родственниками",
+                                fontSize = 12.sp,
+                                lineHeight = 15.sp,
+                                color = if (state.isFamilyLockEnabled) AppleMintGreen else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        Switch(
+                            checked = state.isFamilyLockEnabled,
+                            onCheckedChange = { willEnable ->
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                if (willEnable) {
+                                    viewModel.toggleFamilyLock(true)
+                                } else {
+                                    requestAuthAction("Отключение Семейного замка") {
+                                        viewModel.toggleFamilyLock(false)
+                                    }
+                                }
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = AppleMintGreen
+                            )
+                        )
                     }
                 }
             }
@@ -141,7 +301,13 @@ fun SettingsScreen(
                         checked = state.blockSurveys,
                         onCheckedChange = {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            viewModel.setSetting("block_surveys", it)
+                            if (state.isFamilyLockEnabled && !it) {
+                                requestAuthAction("Отключение фильтра соцопросов") {
+                                    viewModel.setSetting("block_surveys", false)
+                                }
+                            } else {
+                                viewModel.setSetting("block_surveys", it)
+                            }
                         }
                     )
                     AppleHairlineDivider()
@@ -151,7 +317,13 @@ fun SettingsScreen(
                         checked = state.blockFinancial,
                         onCheckedChange = {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            viewModel.setSetting("block_financial", it)
+                            if (state.isFamilyLockEnabled && !it) {
+                                requestAuthAction("Отключение финансового фильтра") {
+                                    viewModel.setSetting("block_financial", false)
+                                }
+                            } else {
+                                viewModel.setSetting("block_financial", it)
+                            }
                         }
                     )
                     AppleHairlineDivider()
@@ -161,7 +333,13 @@ fun SettingsScreen(
                         checked = state.blockSilentCalls,
                         onCheckedChange = {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            viewModel.setSetting("block_silent", it)
+                            if (state.isFamilyLockEnabled && !it) {
+                                requestAuthAction("Отключение фильтра немых звонков") {
+                                    viewModel.setSetting("block_silent", false)
+                                }
+                            } else {
+                                viewModel.setSetting("block_silent", it)
+                            }
                         }
                     )
                 }

@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ru.antispam.app.data.local.AppDatabase
+import ru.antispam.app.privacy.FamilyLockManager
 import ru.antispam.app.privacy.ProtectionPresetManager
 import ru.antispam.app.privacy.model.ProtectionPreset
 import ru.antispam.app.util.OemOnboardingHelper
@@ -31,7 +32,9 @@ data class SettingsUiState(
     val activePreset: ProtectionPreset = ProtectionPreset.ANTI_EAVESDROPPING,
     val oemVendor: OemVendor = OemVendor.GENERIC_AOSP,
     val isBatteryOptimizationIgnored: Boolean = true,
-    val showOemBanner: Boolean = false
+    val showOemBanner: Boolean = false,
+    val isFamilyLockEnabled: Boolean = false,
+    val isDeviceSecure: Boolean = false
 )
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
@@ -56,6 +59,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             val isIgnored = OemOnboardingHelper.isIgnoringBatteryOptimizations(getApplication())
             val isBannerDismissed = prefs.getBoolean("oem_banner_dismissed", false)
             val shouldShowBanner = !isBannerDismissed && (vendor.isAggressiveKiller || !isIgnored)
+            val isFamilyLock = FamilyLockManager.isFamilyLockEnabled(getApplication())
+            val isSecure = FamilyLockManager.isDeviceSecure(getApplication())
 
             _uiState.update {
                 it.copy(
@@ -70,10 +75,20 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                     activePreset = activePreset,
                     oemVendor = vendor,
                     isBatteryOptimizationIgnored = isIgnored,
-                    showOemBanner = shouldShowBanner
+                    showOemBanner = shouldShowBanner,
+                    isFamilyLockEnabled = isFamilyLock,
+                    isDeviceSecure = isSecure
                 )
             }
         }
+    }
+
+    /**
+     * Phase 11.5: Toggles Family Lock ("Защита родителей").
+     */
+    fun toggleFamilyLock(enabled: Boolean) {
+        FamilyLockManager.setFamilyLockEnabled(getApplication(), enabled)
+        loadSettings()
     }
 
     /**
