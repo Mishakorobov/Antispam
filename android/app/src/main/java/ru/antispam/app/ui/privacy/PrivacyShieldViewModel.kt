@@ -17,6 +17,7 @@ import ru.antispam.app.privacy.MicGuardService
 import ru.antispam.app.privacy.MicJammerManager
 import ru.antispam.app.privacy.AccessibilityAuditor
 import ru.antispam.app.privacy.ClipboardGuardManager
+import ru.antispam.app.privacy.AdIdManager
 import ru.antispam.app.privacy.CertificateGuardManager
 import ru.antispam.app.privacy.GeoTriangulationAuditor
 import ru.antispam.app.privacy.NotificationListenerAuditor
@@ -30,6 +31,7 @@ import ru.antispam.app.privacy.VpnClientFormat
 import ru.antispam.app.privacy.VpnMaskingHelper
 import ru.antispam.app.privacy.model.AccessibilityRiskLevel
 import ru.antispam.app.privacy.model.AccessibilityServiceApp
+import ru.antispam.app.privacy.model.AdIdPrivacyProfile
 import ru.antispam.app.privacy.model.ListenerRiskLevel
 import ru.antispam.app.privacy.model.MaskingTargetApp
 import ru.antispam.app.privacy.model.NotificationListenerApp
@@ -87,7 +89,8 @@ data class PrivacyShieldUiState(
     val userCertificates: List<UserInstalledCertificate> = emptyList(),
     val certMitmCriticalCount: Int = 0,
     val certWarningCount: Int = 0,
-    val hasMitmThreat: Boolean = false
+    val hasMitmThreat: Boolean = false,
+    val adIdProfile: AdIdPrivacyProfile? = null
 )
 
 class PrivacyShieldViewModel(application: Application) : AndroidViewModel(application) {
@@ -187,6 +190,9 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
             // Phase 9.4: Audit user-installed Root CA certificates for MITM risks
             val certAudit = CertificateGuardManager.auditCertificates(getApplication())
 
+            // Phase 9.5: Inspect Cross-App Advertising ID (GAID / OAID) status
+            val adProfile = AdIdManager.getPrivacyProfile(getApplication())
+
             _uiState.update {
                 it.copy(
                     scannedApps = apps,
@@ -214,7 +220,8 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
                     userCertificates = certAudit.userCertificates,
                     certMitmCriticalCount = certAudit.criticalCount,
                     certWarningCount = certAudit.warningCount,
-                    hasMitmThreat = certAudit.hasMitmThreat
+                    hasMitmThreat = certAudit.hasMitmThreat,
+                    adIdProfile = adProfile
                 )
             }
         }
@@ -234,6 +241,10 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
 
     fun openSecuritySettings() {
         CertificateGuardManager.openSecuritySettings(getApplication())
+    }
+
+    fun openAdvertisingSettings(): Boolean {
+        return AdIdManager.openAdvertisingSettings(getApplication())
     }
 
     fun openAppDetails(packageName: String) {

@@ -71,6 +71,7 @@ import ru.antispam.app.privacy.VpnClientFormat
 import ru.antispam.app.privacy.VpnMaskingHelper
 import ru.antispam.app.privacy.model.AccessibilityRiskLevel
 import ru.antispam.app.privacy.model.AccessibilityServiceApp
+import ru.antispam.app.privacy.model.AdIdPrivacyProfile
 import ru.antispam.app.privacy.model.CertificateRiskLevel
 import ru.antispam.app.privacy.model.ListenerRiskLevel
 import ru.antispam.app.privacy.model.MaskingTargetApp
@@ -722,6 +723,17 @@ fun PrivacyShieldScreen(
                 onOpenSecuritySettings = {
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                     viewModel.openSecuritySettings()
+                }
+            )
+        }
+
+        // Phase 9.5: Advertising Identifier Reset & Tracking Shield
+        item {
+            AdIdCard(
+                profile = state.adIdProfile,
+                onOpenAdvertisingSettings = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    viewModel.openAdvertisingSettings()
                 }
             )
         }
@@ -2316,6 +2328,107 @@ private fun CertificateAuditCard(
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = if (criticalCount > 0) "Удалить опасные сертификаты" else "Хранилище сертификатов",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AdIdCard(
+    profile: AdIdPrivacyProfile?,
+    onOpenAdvertisingSettings: () -> Unit
+) {
+    AppleGroupedCard {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(AppleBlue.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Fingerprint,
+                        contentDescription = "Ad ID Icon",
+                        tint = AppleBlue,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(14.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Сквозной рекламный трекер",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = profile?.trackingPlatformName ?: "GAID / OAID профилирование",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Explanation Banner
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(AppleBlue.copy(alpha = 0.10f))
+                    .padding(12.dp)
+            ) {
+                Text(
+                    text = "🛡️ Рекламные сети (MyTracker, AppMetrica, Google, Яндекс) используют рекламный ID для связывания всех ваших действий в разных приложениях в один цифровой профиль.",
+                    fontSize = 12.sp,
+                    color = AppleBlue,
+                    lineHeight = 16.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            profile?.resetSteps?.forEach { step ->
+                Text(
+                    text = step,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    lineHeight = 16.sp,
+                    modifier = Modifier.padding(vertical = 2.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Button(
+                onClick = onOpenAdvertisingSettings,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = AppleBlue),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Fingerprint,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Открыть настройки рекламы (Сброс ID)",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold
                 )
