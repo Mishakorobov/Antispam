@@ -244,6 +244,7 @@ fun SecurityRingWidget(
                             SecurityIssueSeverity.CRITICAL -> AppleRed
                             SecurityIssueSeverity.HIGH -> AppleOrange
                             SecurityIssueSeverity.MEDIUM -> AppleBlue
+                            SecurityIssueSeverity.INFO -> Color(0xFF5C6BC0)
                         }
 
                         Column(
@@ -263,11 +264,13 @@ fun SecurityRingWidget(
                                     text = issue.title,
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurface
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.weight(1f)
                                 )
+                                Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = "-${issue.scoreDeduction}%",
-                                    fontSize = 12.sp,
+                                    text = if (issue.scoreDeduction > 0) "-${issue.scoreDeduction}%" else "ИНФО",
+                                    fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = badgeColor
                                 )

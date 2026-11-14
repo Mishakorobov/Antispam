@@ -20,6 +20,10 @@ import ru.antispam.app.privacy.model.SecurityScoreReport
  * - Rogue Accessibility Services active: -10 points
  * - Surveillance Superapps cataloging installed VPNs: -10 points
  * - Stealth Non-GPS Geo-Triangulation active: -5 points
+ *
+ * Phase 11.1 (Soft Advisory):
+ * - Root / Magisk / KernelSU / Frida detected: 0 points deduction (Informational advisory),
+ *   allowing power-users and 4PDA/F-Droid community to enjoy full functionality without penalties.
  */
 object SecurityScoreEngine {
 
@@ -182,6 +186,21 @@ object SecurityScoreEngine {
             )
         }
 
+        // Phase 11.1: Root / Hook Environment (Soft Advisory)
+        if (input.hasRootOrHooks) {
+            issues.add(
+                SecurityIssue(
+                    id = "root_or_hooks_detected",
+                    type = SecurityIssueType.ROOT_OR_HOOK_ENVIRONMENT,
+                    title = "Обнаружен Root-доступ или среда модификаций",
+                    description = "На устройстве активны права суперпользователя (Root/Magisk/KernelSU) или среда хуков. Приложение работает в штатном режиме; убедитесь, что Root не выдан сомнительным программам.",
+                    severity = SecurityIssueSeverity.INFO,
+                    scoreDeduction = 0,
+                    actionLabel = "Проверить Root-доступ"
+                )
+            )
+        }
+
         val finalScore = score.coerceIn(0, 100)
 
         val (title, desc) = when {
@@ -199,12 +218,13 @@ object SecurityScoreEngine {
             )
         }
 
-        // Sort issues by severity: CRITICAL first, then HIGH, then MEDIUM
+        // Sort issues by severity: CRITICAL first, then HIGH, then MEDIUM, then INFO
         val sortedIssues = issues.sortedBy {
             when (it.severity) {
                 SecurityIssueSeverity.CRITICAL -> 0
                 SecurityIssueSeverity.HIGH -> 1
                 SecurityIssueSeverity.MEDIUM -> 2
+                SecurityIssueSeverity.INFO -> 3
             }
         }
 

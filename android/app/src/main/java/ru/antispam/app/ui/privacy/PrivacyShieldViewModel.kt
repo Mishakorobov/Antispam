@@ -43,6 +43,7 @@ import ru.antispam.app.privacy.model.SecurityIssueType
 import ru.antispam.app.privacy.model.SecurityScoreReport
 import ru.antispam.app.privacy.model.SuperAppRiskLevel
 import ru.antispam.app.privacy.model.TriangulationRiskApp
+import ru.antispam.app.security.AntiTamperHelper
 import ru.antispam.app.privacy.model.TriangulationRiskLevel
 import ru.antispam.app.privacy.model.UserInstalledCertificate
 import ru.antispam.app.util.VipModeManager
@@ -204,6 +205,9 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
             val lastSync = try { db.syncMetadataDao().getValueLong("last_sync_timestamp") ?: System.currentTimeMillis() } catch (_: Exception) { System.currentTimeMillis() }
             val isRegistryFresh = poolCount > 0 && (System.currentTimeMillis() - lastSync < 48 * 3600 * 1000L)
 
+            // Phase 11.1: Environment integrity check (Soft Advisory for Root/Frida)
+            val envReport = AntiTamperHelper.checkEnvironmentIntegrity(getApplication())
+
             val auditInput = PrivacyAuditInput(
                 isRegistryUpToDate = isRegistryFresh,
                 isMicGuardEnabled = _uiState.value.isMicGuardEnabled,
@@ -212,7 +216,8 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
                 hasMitmRootCa = certAudit.criticalCount > 0,
                 hasCriticalAccessibility = criticalAccess > 0,
                 hasVpnInventoryExposed = superAppAudit.isVpnInventoryExposed,
-                hasStealthGeoTrackers = triangulationAudit.criticalCount > 0
+                hasStealthGeoTrackers = triangulationAudit.criticalCount > 0,
+                hasRootOrHooks = envReport.hasPrivilegeOrHookExposure
             )
             val scoreReport = SecurityScoreEngine.calculateScore(auditInput)
 
@@ -278,6 +283,9 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
             }
             SecurityIssueType.STEALTH_GEO_DETECTED -> {
                 openLocationSettings()
+            }
+            SecurityIssueType.ROOT_OR_HOOK_ENVIRONMENT -> {
+                openSecuritySettings()
             }
         }
     }

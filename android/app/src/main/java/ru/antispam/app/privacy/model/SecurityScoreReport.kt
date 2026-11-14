@@ -11,7 +11,8 @@ enum class SecurityIssueType {
     MITM_ROOT_CA_DETECTED,
     CRITICAL_ACCESSIBILITY_DETECTED,
     SUPERAPP_VPN_EXPOSED,
-    STEALTH_GEO_DETECTED
+    STEALTH_GEO_DETECTED,
+    ROOT_OR_HOOK_ENVIRONMENT // Phase 11.1: Soft advisory warning for Root/Magisk/Frida
 }
 
 /**
@@ -20,7 +21,8 @@ enum class SecurityIssueType {
 enum class SecurityIssueSeverity {
     CRITICAL,
     HIGH,
-    MEDIUM
+    MEDIUM,
+    INFO
 }
 
 /**
@@ -47,7 +49,8 @@ data class PrivacyAuditInput(
     val hasMitmRootCa: Boolean,
     val hasCriticalAccessibility: Boolean = false,
     val hasVpnInventoryExposed: Boolean = false,
-    val hasStealthGeoTrackers: Boolean = false
+    val hasStealthGeoTrackers: Boolean = false,
+    val hasRootOrHooks: Boolean = false
 )
 
 /**

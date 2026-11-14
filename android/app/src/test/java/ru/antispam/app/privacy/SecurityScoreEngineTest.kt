@@ -140,14 +140,45 @@ class SecurityScoreEngineTest {
             isMicGuardEnabled = true,
             hasNotificationSpies = true, // CRITICAL
             isClipboardGuardEnabled = false, // MEDIUM
-            hasMitmRootCa = false
+            hasMitmRootCa = false,
+            hasRootOrHooks = true // INFO
         )
 
         val report = SecurityScoreEngine.calculateScore(input)
 
-        assertEquals(3, report.issues.size)
+        assertEquals(4, report.issues.size)
         assertEquals(SecurityIssueSeverity.CRITICAL, report.issues[0].severity)
         assertEquals(SecurityIssueSeverity.HIGH, report.issues[1].severity)
         assertEquals(SecurityIssueSeverity.MEDIUM, report.issues[2].severity)
+        assertEquals(SecurityIssueSeverity.INFO, report.issues[3].severity)
+    }
+
+    @Test
+    fun test_calculateScore_rootOrHooks_producesAdvisoryIssueWithoutScoreDeduction() {
+        // Phase 11.1: Power-user with Root/Magisk and all other shields active
+        val input = PrivacyAuditInput(
+            isRegistryUpToDate = true,
+            isMicGuardEnabled = true,
+            hasNotificationSpies = false,
+            isClipboardGuardEnabled = true,
+            hasMitmRootCa = false,
+            hasCriticalAccessibility = false,
+            hasVpnInventoryExposed = false,
+            hasStealthGeoTrackers = false,
+            hasRootOrHooks = true
+        )
+
+        val report = SecurityScoreEngine.calculateScore(input)
+
+        // Soft advisory does NOT deduct points from the user (score remains 100!)
+        assertEquals(100, report.score)
+        assertEquals("Надежно защищен", report.statusTitle)
+        assertEquals(1, report.issues.size)
+
+        val issue = report.issues[0]
+        assertEquals(SecurityIssueType.ROOT_OR_HOOK_ENVIRONMENT, issue.type)
+        assertEquals(SecurityIssueSeverity.INFO, issue.severity)
+        assertEquals(0, issue.scoreDeduction)
+        assertTrue(issue.description.contains("Root/Magisk/KernelSU"))
     }
 }

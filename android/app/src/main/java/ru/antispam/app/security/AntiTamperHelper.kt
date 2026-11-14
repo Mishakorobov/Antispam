@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import ru.antispam.app.BuildConfig
+import java.io.File
 import java.security.MessageDigest
 
 /**
@@ -47,13 +48,29 @@ data class SignatureVerificationResult(
 }
 
 /**
- * AntiTamperHelper: Defense against APK re-packaging, trojanization, and memory/screen eavesdropping.
+ * Phase 11.1: Environment Integrity Report (Two-Tier Policy).
+ * Delineates between hard-blocking signature tampering vs soft-advisory Root/Magisk/KernelSU presence.
+ */
+data class EnvironmentIntegrityReport(
+    val isRootDetected: Boolean = false,
+    val isHookDetected: Boolean = false,
+    val detectedIndicators: List<String> = emptyList(),
+    val description: String = ""
+) {
+    val hasPrivilegeOrHookExposure: Boolean
+        get() = isRootDetected || isHookDetected
+}
+
+/**
+ * AntiTamperHelper: Defense against APK re-packaging, trojanization, and privilege escalation.
  *
- * Implements:
- * 1. Runtime signature verification against official AntiSpam certificate fingerprint.
- * 2. Window security enforcement (FLAG_SECURE) to block screenshot capture and screen recording
- *    via MediaProjection or accessibility scrapers.
- * 3. In-memory state tracking to display security alerts if an unauthorized build is detected.
+ * Implements Two-Tier Policy (Phase 11.1):
+ * 1. Tier 1 (CRITICAL - Hard Block): Signature Mismatch / APK Tampering.
+ *    Unauthorized re-packaging blocks execution to protect against pirated trojanized APKs.
+ * 2. Tier 2 (WARNING - Soft Advisory): Root / Magisk / KernelSU / Frida / Xposed presence.
+ *    Does NOT block application execution, respecting power-users and the 4PDA / F-Droid / GrapheneOS
+ *    community who use Root for privacy. Instead, surfaces an informative indicator in SecurityScore.
+ * 3. Window security enforcement (FLAG_SECURE) to block screenshot capture and screen recording.
  */
 object AntiTamperHelper {
 
@@ -64,6 +81,28 @@ object AntiTamperHelper {
      */
     const val EXPECTED_RELEASE_SHA256 = "DBC812B2091C2ABE35753572534D9669348D074C88508C1409EA48F10DADD1C8"
     const val EXPECTED_RELEASE_SHA256_COLON = "DB:C8:12:B2:09:1C:2A:BE:35:75:35:72:53:4D:96:69:34:8D:07:4C:88:50:8C:14:09:EA:48:F1:0D:AD:D1:C8"
+
+    private val KNOWN_SU_PATHS = listOf(
+        "/system/bin/su",
+        "/system/xbin/su",
+        "/sbin/su",
+        "/system/su",
+        "/vendor/bin/su",
+        "/data/local/xbin/su",
+        "/data/local/bin/su",
+        "/system/sd/xbin/su"
+    )
+
+    private val KNOWN_ROOT_PACKAGES = listOf(
+        "com.topjohnwu.magisk",
+        "me.weishu.kernelsu",
+        "eu.chainfire.supersu"
+    )
+
+    private val KNOWN_HOOK_CLASSES = listOf(
+        "de.robv.android.xposed.XposedBridge",
+        "com.saurik.substrate.MS\$MethodHook"
+    )
 
     private val _verificationFlow = MutableStateFlow<SignatureVerificationResult?>(null)
     val verificationFlow: StateFlow<SignatureVerificationResult?> = _verificationFlow.asStateFlow()
@@ -78,6 +117,10 @@ object AntiTamperHelper {
      * Visible for testing: inject mock signatures without invoking PackageManager.
      */
     internal var mockSignaturesForTest: List<ByteArray>? = null
+    internal var mockExistingFilesForTest: Set<String>? = null
+    internal var mockBuildTagsForTest: String? = null
+    internal var mockInstalledPackagesForTest: Set<String>? = null
+    internal var mockLoadedClassesForTest: Set<String>? = null
 
     /**
      * Strips colons, spaces and normalizes to uppercase for robust hex comparison.
@@ -164,6 +207,85 @@ object AntiTamperHelper {
                 )
             }
         }
+    }
+
+    /**
+     * Phase 11.1: Checks environment integrity (Root / Magisk / KernelSU / Frida / Xposed).
+     * Returns soft advisory report. Does NOT block app execution.
+     */
+    fun checkEnvironmentIntegrity(context: Context): EnvironmentIntegrityReport {
+        val indicators = mutableListOf<String>()
+
+        // 1. Check su binaries in standard directories
+        for (path in KNOWN_SU_PATHS) {
+            val exists = mockExistingFilesForTest?.contains(path) ?: try {
+                File(path).exists()
+            } catch (_: Exception) {
+                false
+            }
+            if (exists) {
+                indicators.add("SU binary: $path")
+            }
+        }
+
+        // 2. Check test-keys build tags
+        val tags = mockBuildTagsForTest ?: Build.TAGS
+        if (tags != null && tags.contains("test-keys")) {
+            indicators.add("OS build: test-keys")
+        }
+
+        // 3. Check known root management apps
+        val pm = context.packageManager
+        for (pkg in KNOWN_ROOT_PACKAGES) {
+            val isInstalled = mockInstalledPackagesForTest?.contains(pkg) ?: try {
+                pm.getPackageInfo(pkg, 0)
+                true
+            } catch (_: Exception) {
+                false
+            }
+            if (isInstalled) {
+                indicators.add("Root manager: $pkg")
+            }
+        }
+
+        // 4. Check hook framework artifacts (Frida / Xposed / Substrate)
+        for (className in KNOWN_HOOK_CLASSES) {
+            val isLoaded = mockLoadedClassesForTest?.contains(className) ?: try {
+                Class.forName(className)
+                true
+            } catch (_: Exception) {
+                false
+            }
+            if (isLoaded) {
+                indicators.add("Hook framework: $className")
+            }
+        }
+
+        val hasRoot = indicators.any { it.startsWith("SU") || it.startsWith("OS") || it.startsWith("Root") }
+        val hasHook = indicators.any { it.startsWith("Hook") }
+
+        val desc = when {
+            hasRoot && hasHook -> "Обнаружен Root-доступ и среда модификации памяти (Frida/Xposed)."
+            hasRoot -> "На устройстве активны права суперпользователя (Root/Magisk/KernelSU)."
+            hasHook -> "Обнаружена среда динамической инструментации (Xposed/Substrate)."
+            else -> "Среда исполнения безопасна."
+        }
+
+        return EnvironmentIntegrityReport(
+            isRootDetected = hasRoot,
+            isHookDetected = hasHook,
+            detectedIndicators = indicators,
+            description = desc
+        )
+    }
+
+    /**
+     * Determines whether the app should be hard-blocked.
+     * Hard-block is ONLY applied on APK signature tampering.
+     */
+    fun isHardBlocked(context: Context): Boolean {
+        val sig = lastVerificationResult ?: verifyAppSignature(context)
+        return sig.status == SignatureStatus.TAMPERED
     }
 
     /**

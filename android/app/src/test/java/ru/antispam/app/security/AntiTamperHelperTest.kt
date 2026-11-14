@@ -1,5 +1,6 @@
 package ru.antispam.app.security
 
+import android.content.Context
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -74,5 +75,63 @@ class AntiTamperHelperTest {
 
         val tampered = SignatureVerificationResult(SignatureStatus.TAMPERED, "HASH", "TAMPERED")
         assertFalse(tampered.isSafe)
+    }
+
+    @Test
+    fun test_environmentIntegrity_detectsSuBinary() {
+        try {
+            AntiTamperHelper.mockExistingFilesForTest = setOf("/system/xbin/su")
+            val dummyContext = android.content.ContextWrapper(null)
+            val report = AntiTamperHelper.checkEnvironmentIntegrity(dummyContext)
+
+            assertTrue(report.isRootDetected)
+            assertTrue(report.hasPrivilegeOrHookExposure)
+            assertTrue(report.detectedIndicators.any { it.contains("/system/xbin/su") })
+            assertTrue(report.description.contains("Root"))
+        } finally {
+            AntiTamperHelper.mockExistingFilesForTest = null
+        }
+    }
+
+    @Test
+    fun test_environmentIntegrity_detectsTestKeys() {
+        try {
+            AntiTamperHelper.mockBuildTagsForTest = "test-keys,release-keys"
+            val dummyContext = android.content.ContextWrapper(null)
+            val report = AntiTamperHelper.checkEnvironmentIntegrity(dummyContext)
+
+            assertTrue(report.isRootDetected)
+            assertTrue(report.hasPrivilegeOrHookExposure)
+            assertTrue(report.detectedIndicators.any { it.contains("test-keys") })
+        } finally {
+            AntiTamperHelper.mockBuildTagsForTest = null
+        }
+    }
+
+    @Test
+    fun test_twoTierPolicy_rootDoesNotHardBlock() {
+        // Genuine release signature with active Root
+        val genuineBytes = "AntiSpamOfficialProductionCertificateBytes".toByteArray(Charsets.UTF_8)
+        val dummyContext = android.content.ContextWrapper(null)
+
+        try {
+            // Emulate genuine signature matching expected
+            val normalizedExpected = AntiTamperHelper.normalizeFingerprint(AntiTamperHelper.EXPECTED_RELEASE_SHA256)
+            val genuineRes = SignatureVerificationResult(
+                status = SignatureStatus.GENUINE_RELEASE,
+                sha256Fingerprint = AntiTamperHelper.EXPECTED_RELEASE_SHA256,
+                message = "Genuine"
+            )
+            AntiTamperHelper.mockExistingFilesForTest = setOf("/system/bin/su")
+
+            val envReport = AntiTamperHelper.checkEnvironmentIntegrity(dummyContext)
+            assertTrue(envReport.isRootDetected)
+
+            // Crucial verification: genuine release build is NOT hard blocked even with root!
+            assertFalse(genuineRes.status == SignatureStatus.TAMPERED)
+            assertTrue(genuineRes.isSafe)
+        } finally {
+            AntiTamperHelper.mockExistingFilesForTest = null
+        }
     }
 }
