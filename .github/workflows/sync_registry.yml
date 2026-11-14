@@ -103,9 +103,9 @@ jobs:
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         with:
           tag_name: latest-data
-          name: 'Latest AntiSpam Numbering Plan & Pools'
+          name: 'Latest AntiSpam Shield Numbering Plan & Pools'
           body: |
-            Automated weekly build of Russian Numbering Plan (Mincifry ABC/DEF/800) and ASPB Binary Pools.
+            Automated weekly build of Russian Numbering Plan (Mincifry ABC/DEF/800) and ASPB Binary Pools for AntiSpam Shield: Блокировка спама и защита от прослушки.
             - Generated on: ${{ github.event.head_commit.timestamp || github.event.schedule }}
             - Protocol: ASPB v2 (Ed25519 Cryptographically Signed)
           files: |

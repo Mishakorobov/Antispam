@@ -67,7 +67,7 @@ class OnboardingManagerTest {
     fun test_getManifestShareText_containsCorePillarsAndProductTitle() {
         val text = OnboardingManager.getManifestShareText()
 
-        assertTrue("Should contain product name", text.contains("AntiSpam Shield"))
+        assertTrue("Should contain product name", text.contains("AntiSpam Shield: Блокировка спама и защита от прослушки"))
         assertTrue("Should contain Manifesto title", text.contains("Манифест Нулевой Телеметрии"))
         assertTrue("Should contain Zero Cloud Upload guarantee", text.contains("Zero Cloud Upload") || text.contains("НИКОГДА не выгружаем"))
         assertTrue("Should mention 1 ms on-device verification", text.contains("1 мс") || text.contains("On-Device"))

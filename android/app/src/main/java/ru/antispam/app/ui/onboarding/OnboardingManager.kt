@@ -50,7 +50,7 @@ object OnboardingManager {
      */
     fun getManifestShareText(): String {
         return """
-            🛡️ Манифест Нулевой Телеметрии | AntiSpam Shield
+            🛡️ Манифест Нулевой Телеметрии | AntiSpam Shield: Блокировка спама и защита от прослушки
             
             В отличие от коммерческих определителей номеров (GetContact, Яндекс, Kaspersky WhoCalls, Truecaller), мы НИКОГДА не выгружаем вашу телефонную книгу, историю звонков или геопозицию в облако.
             
@@ -63,7 +63,7 @@ object OnboardingManager {
             4. Анти-шпионский щит — защита микрофона от прослушки (MicGuard), аудит переадресации (*#21#) и защита от 2G IMSI catchers.
             5. GMS-Free & Офлайн P2P — полная независимость от Google Play Services, обмен базой по Bluetooth/Quick Share.
             
-            Персональный суверенный файрвол связи AntiSpam Shield.
+            Персональный суверенный файрвол связи AntiSpam Shield: Блокировка спама и защита от прослушки.
         """.trimIndent()
     }
 
@@ -73,7 +73,7 @@ object OnboardingManager {
     fun createShareIntent(): Intent {
         val sendIntent = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
-            putExtra(Intent.EXTRA_SUBJECT, "Манифест Нулевой Телеметрии | AntiSpam Shield")
+            putExtra(Intent.EXTRA_SUBJECT, "Манифест Нулевой Телеметрии | AntiSpam Shield: Блокировка спама и защита от прослушки")
             putExtra(Intent.EXTRA_TEXT, getManifestShareText())
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }

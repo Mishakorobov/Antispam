@@ -115,8 +115,8 @@ object OfflineShareHelper {
         val sendIntent = Intent(Intent.ACTION_SEND).apply {
             type = "application/octet-stream"
             putExtra(Intent.EXTRA_STREAM, contentUri)
-            putExtra(Intent.EXTRA_SUBJECT, "База спам-номеров AntiSpam (.aspb)")
-            putExtra(Intent.EXTRA_TEXT, "Офлайн-снимок базы спам-номеров, подписанный Ed25519.")
+            putExtra(Intent.EXTRA_SUBJECT, "База спам-номеров AntiSpam Shield: Блокировка спама и защита от прослушки (.aspb)")
+            putExtra(Intent.EXTRA_TEXT, "Офлайн-снимок базы спам-номеров AntiSpam Shield: Блокировка спама и защита от прослушки, подписанный Ed25519.")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
 

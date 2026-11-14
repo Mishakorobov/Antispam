@@ -200,9 +200,9 @@ def server(
     port: int = typer.Option(8000, "--port", "-p", help="Bind port"),
     reload: bool = typer.Option(False, "--reload", help="Enable auto-reload")
 ):
-    """Run the AntiSpam FastAPI server with background workers."""
+    """Run the AntiSpam Shield: Блокировка спама и защита от прослушки FastAPI server with background workers."""
     import uvicorn
-    console.print(f"[bold green]Starting AntiSpam REST API server on http://{host}:{port}...[/bold green]")
+    console.print(f"[bold green]Starting AntiSpam Shield: Блокировка спама и защита от прослушки REST API server on http://{host}:{port}...[/bold green]")
     uvicorn.run("backend.api.app:app", host=host, port=port, reload=reload)
 
 @app.command()

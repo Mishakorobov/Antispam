@@ -40,9 +40,9 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="AntiSpam Server API",
-        description="REST API for crowd-sourced spam complaints and numbering pool synchronization",
-        version="1.0.0",
+        title="AntiSpam Shield: Блокировка спама и защита от прослушки API",
+        description="REST API for AntiSpam Shield: Блокировка спама и защита от прослушки crowd-sourced spam complaints and numbering pool synchronization",
+        version="1.2.0",
         lifespan=lifespan,
     )
 

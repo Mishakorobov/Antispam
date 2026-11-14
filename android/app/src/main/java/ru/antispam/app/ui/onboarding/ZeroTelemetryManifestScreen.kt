@@ -300,11 +300,12 @@ private fun ManifestHeroHeader() {
         Spacer(modifier = Modifier.height(14.dp))
 
         Text(
-            text = "AntiSpam Shield",
-            fontSize = 24.sp,
+            text = "AntiSpam Shield: Блокировка спама и защита от прослушки",
+            fontSize = 18.sp,
             fontWeight = FontWeight.ExtraBold,
             color = MaterialTheme.colorScheme.onSurface,
-            letterSpacing = (-0.5).sp
+            textAlign = TextAlign.Center,
+            letterSpacing = (-0.3).sp
         )
 
         Spacer(modifier = Modifier.height(4.dp))
