@@ -8,6 +8,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import ru.antispam.app.data.local.AppDatabase
+import ru.antispam.app.service.ProtectionStatusNotificationManager
 import ru.antispam.app.worker.SyncPoolsWorker
 
 class BootCompletedReceiver : BroadcastReceiver() {
@@ -35,6 +36,9 @@ class BootCompletedReceiver : BroadcastReceiver() {
 
             // Ensure background sync schedule is active
             SyncPoolsWorker.schedulePeriodicSync(context)
+
+            // Re-post ongoing protection status notification in notification shade
+            ProtectionStatusNotificationManager.updateNotification(context)
         }
     }
 }

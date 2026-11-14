@@ -32,6 +32,7 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -50,6 +51,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ru.antispam.app.security.AntiTamperHelper
 import ru.antispam.app.security.SignatureStatus
+import ru.antispam.app.service.ProtectionStatusNotificationManager
 import ru.antispam.app.ui.calllog.CallLogScreen
 import ru.antispam.app.ui.calllog.CallLogViewModel
 import ru.antispam.app.ui.onboarding.OnboardingManager
@@ -71,6 +73,8 @@ class MainActivity : ComponentActivity() {
     private val privacyViewModel: PrivacyShieldViewModel by viewModels()
     private val settingsViewModel: SettingsViewModel by viewModels()
 
+    private val requestedTabState = mutableIntStateOf(0)
+
     private val roleRequestLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
@@ -85,6 +89,10 @@ class MainActivity : ComponentActivity() {
 
         // Phase 13.3: Handle incoming P2P .aspb file opened via Quick Share / File Manager
         handleIncomingAspbIntent(intent)
+        handleTabNavigationIntent(intent)
+
+        // Ensure ongoing protection status notification is active in notification shade
+        ProtectionStatusNotificationManager.updateNotification(this)
 
         setContent {
             AntiSpamTheme {
@@ -104,7 +112,8 @@ class MainActivity : ComponentActivity() {
                         whitelistViewModel = whitelistViewModel,
                         privacyViewModel = privacyViewModel,
                         settingsViewModel = settingsViewModel,
-                        onRequestRole = { requestCallScreeningRole() }
+                        onRequestRole = { requestCallScreeningRole() },
+                        targetTab = requestedTabState.intValue
                     )
                 }
             }
@@ -117,6 +126,7 @@ class MainActivity : ComponentActivity() {
         privacyViewModel.checkPendingRevocationOnResume()
         privacyViewModel.refreshScan()
         settingsViewModel.loadSettings()
+        ProtectionStatusNotificationManager.updateNotification(this)
     }
 
     private fun requestCallScreeningRole() {
@@ -131,6 +141,14 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handleIncomingAspbIntent(intent)
+        handleTabNavigationIntent(intent)
+    }
+
+    private fun handleTabNavigationIntent(intent: Intent?) {
+        val tab = intent?.getIntExtra(ProtectionStatusNotificationManager.EXTRA_NAV_TAB, -1) ?: -1
+        if (tab in 0..3) {
+            requestedTabState.intValue = tab
+        }
     }
 
     private fun handleIncomingAspbIntent(intent: Intent?) {
@@ -151,9 +169,15 @@ fun MainAppScaffold(
     whitelistViewModel: WhitelistViewModel,
     privacyViewModel: PrivacyShieldViewModel,
     settingsViewModel: SettingsViewModel,
-    onRequestRole: () -> Unit
+    onRequestRole: () -> Unit,
+    targetTab: Int = 0
 ) {
-    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    var selectedTab by rememberSaveable { mutableIntStateOf(targetTab) }
+    LaunchedEffect(targetTab) {
+        if (targetTab in 0..3) {
+            selectedTab = targetTab
+        }
+    }
     val haptic = LocalHapticFeedback.current
 
     val tabs = listOf(

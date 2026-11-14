@@ -18,6 +18,7 @@ import ru.antispam.app.data.repository.SyncResult
 import ru.antispam.app.privacy.FamilyLockManager
 import ru.antispam.app.privacy.ProtectionPresetManager
 import ru.antispam.app.privacy.model.ProtectionPreset
+import ru.antispam.app.service.ProtectionStatusNotificationManager
 import android.content.Intent
 import android.net.Uri
 import ru.antispam.app.util.ImportResult
@@ -41,6 +42,7 @@ data class SettingsUiState(
     val showOemBanner: Boolean = false,
     val isFamilyLockEnabled: Boolean = false,
     val isDeviceSecure: Boolean = false,
+    val showStatusNotification: Boolean = true,
     val p2pMessage: String? = null,
     val isP2pSuccess: Boolean = false,
     val showManifestModal: Boolean = false
@@ -86,10 +88,16 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                     isBatteryOptimizationIgnored = isIgnored,
                     showOemBanner = shouldShowBanner,
                     isFamilyLockEnabled = isFamilyLock,
-                    isDeviceSecure = isSecure
+                    isDeviceSecure = isSecure,
+                    showStatusNotification = ProtectionStatusNotificationManager.isNotificationEnabled(getApplication())
                 )
             }
         }
+    }
+
+    fun toggleStatusNotification(enabled: Boolean) {
+        ProtectionStatusNotificationManager.setNotificationEnabled(getApplication(), enabled)
+        _uiState.update { it.copy(showStatusNotification = enabled) }
     }
 
     /**

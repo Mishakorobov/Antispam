@@ -492,6 +492,40 @@ fun SettingsScreen(
                         )
                     }
                     AppleHairlineDivider()
+                    // Ongoing Protection Status Notification in Notification Shade
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Плашка защиты в шторке",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Постоянное уведомление о работе защиты и спам-пулах",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            )
+                        }
+                        Switch(
+                            checked = state.showStatusNotification,
+                            onCheckedChange = { checked ->
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                viewModel.toggleStatusNotification(checked)
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = AppleBlue
+                            )
+                        )
+                    }
+                    AppleHairlineDivider()
                     Spacer(modifier = Modifier.height(10.dp))
                     Button(
                         onClick = {

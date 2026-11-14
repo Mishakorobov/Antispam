@@ -213,6 +213,8 @@ class AntiSpamCallScreeningService : CallScreeningService() {
                         timestamp = System.currentTimeMillis()
                     )
                 )
+                // Refresh persistent protection notification counter in shade
+                ProtectionStatusNotificationManager.updateNotification(applicationContext)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to record blocked call in audit log: ${e.message}")
             }

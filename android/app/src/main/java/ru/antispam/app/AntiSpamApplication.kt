@@ -9,6 +9,7 @@ import kotlinx.coroutines.launch
 import ru.antispam.app.data.local.AppDatabase
 import ru.antispam.app.privacy.ClipboardGuardManager
 import ru.antispam.app.security.AntiTamperHelper
+import ru.antispam.app.service.ProtectionStatusNotificationManager
 import ru.antispam.app.worker.SyncPoolsWorker
 
 class AntiSpamApplication : Application() {
@@ -45,5 +46,8 @@ class AntiSpamApplication : Application() {
 
         // Schedule periodic background sync via WorkManager
         SyncPoolsWorker.schedulePeriodicSync(this)
+
+        // Show ongoing protection status card in notification shade
+        ProtectionStatusNotificationManager.updateNotification(this)
     }
 }
