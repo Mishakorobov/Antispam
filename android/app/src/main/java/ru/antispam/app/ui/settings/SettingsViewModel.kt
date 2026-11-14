@@ -13,6 +13,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ru.antispam.app.data.local.AppDatabase
+import ru.antispam.app.privacy.ProtectionPresetManager
+import ru.antispam.app.privacy.model.ProtectionPreset
 import ru.antispam.app.worker.SyncPoolsWorker
 
 data class SettingsUiState(
@@ -23,7 +25,8 @@ data class SettingsUiState(
     val postCallThresholdSeconds: Int = 30, // < 30 seconds
     val pendingReportsCount: Int = 0,
     val currentDatabaseVersion: Long = 0L,
-    val isSyncing: Boolean = false
+    val isSyncing: Boolean = false,
+    val activePreset: ProtectionPreset = ProtectionPreset.ANTI_EAVESDROPPING
 )
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
@@ -42,6 +45,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch(Dispatchers.IO) {
             val pendingCount = db.pendingReportDao().getCount()
             val ver = db.syncMetadataDao().getValueLong("last_delta_version") ?: 0L
+            val activePreset = ProtectionPresetManager.getActivePreset(getApplication())
 
             _uiState.update {
                 it.copy(
@@ -52,10 +56,20 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                     postCallThresholdSeconds = prefs.getInt("post_call_threshold", 30),
                     pendingReportsCount = pendingCount,
                     currentDatabaseVersion = ver,
-                    isSyncing = false
+                    isSyncing = false,
+                    activePreset = activePreset
                 )
             }
         }
+    }
+
+    /**
+     * Phase 10.2: 1-Click Protection Presets switcher.
+     * Applies the chosen paranoia profile across settings and privacy shields in a single transaction.
+     */
+    fun applyProtectionPreset(preset: ProtectionPreset) {
+        ProtectionPresetManager.applyPreset(getApplication(), preset)
+        loadSettings()
     }
 
     fun setSetting(key: String, value: Boolean) {

@@ -1,6 +1,9 @@
 package ru.antispam.app.ui.settings
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -12,9 +15,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Security
+import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -31,13 +40,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import ru.antispam.app.privacy.model.ProtectionPreset
 import ru.antispam.app.ui.components.AppleGroupedCard
 import ru.antispam.app.ui.components.AppleHairlineDivider
 import ru.antispam.app.ui.theme.AppleBlue
@@ -78,6 +90,26 @@ fun SettingsScreen(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
+            // Section 0: Phase 10.2 Пресеты комплексной защиты в 1 клик
+            item {
+                SectionHeader("ПРОФИЛИ ЗАЩИТЫ В 1 КЛИК")
+                AppleGroupedCard {
+                    ProtectionPreset.entries.forEachIndexed { index, preset ->
+                        PresetRow(
+                            preset = preset,
+                            isSelected = state.activePreset == preset,
+                            onSelect = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                viewModel.applyProtectionPreset(preset)
+                            }
+                        )
+                        if (index < ProtectionPreset.entries.size - 1) {
+                            AppleHairlineDivider()
+                        }
+                    }
+                }
+            }
+
             // Section 1: Категории блокировки
             item {
                 SectionHeader("КАТЕГОРИИ ФИЛЬТРАЦИИ")
@@ -230,6 +262,101 @@ fun SettingsScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun PresetRow(
+    preset: ProtectionPreset,
+    isSelected: Boolean,
+    onSelect: () -> Unit
+) {
+    val (accentColor, icon) = when (preset) {
+        ProtectionPreset.BASIC_COMFORT -> AppleMintGreen to Icons.Rounded.Shield
+        ProtectionPreset.ANTI_EAVESDROPPING -> AppleBlue to Icons.Rounded.Security
+        ProtectionPreset.MAX_BUNKER -> Color(0xFF8E24AA) to Icons.Rounded.Lock
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onSelect)
+            .padding(vertical = 12.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(42.dp)
+                .clip(CircleShape)
+                .background(accentColor.copy(alpha = if (isSelected) 0.22f else 0.10f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = accentColor,
+                modifier = Modifier.size(24.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.width(14.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = preset.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                if (isSelected) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(accentColor.copy(alpha = 0.18f))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = "АКТИВЕН",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 10.sp,
+                            color = accentColor
+                        )
+                    }
+                }
+            }
+            Text(
+                text = preset.subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Medium,
+                fontSize = 12.5.sp,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
+                modifier = Modifier.padding(top = 2.dp)
+            )
+            Text(
+                text = preset.description,
+                style = MaterialTheme.typography.bodySmall,
+                fontSize = 11.5.sp,
+                lineHeight = 15.sp,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                modifier = Modifier.padding(top = 2.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.width(10.dp))
+
+        Icon(
+            imageVector = if (isSelected) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
+            contentDescription = null,
+            tint = if (isSelected) accentColor else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
+            modifier = Modifier.size(22.dp)
+        )
     }
 }
 
