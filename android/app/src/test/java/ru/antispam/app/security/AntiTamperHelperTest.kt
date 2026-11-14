@@ -134,4 +134,19 @@ class AntiTamperHelperTest {
             AntiTamperHelper.mockExistingFilesForTest = null
         }
     }
+
+    @Test
+    fun test_environmentIntegrity_detectsZygiskAndMagiskAdbPaths() {
+        try {
+            AntiTamperHelper.mockExistingFilesForTest = setOf("/data/adb/modules")
+            val dummyContext = android.content.ContextWrapper(null)
+            val report = AntiTamperHelper.checkEnvironmentIntegrity(dummyContext)
+
+            assertTrue(report.isRootDetected)
+            assertTrue(report.hasPrivilegeOrHookExposure)
+            assertTrue(report.detectedIndicators.any { it.contains("/data/adb/modules") })
+        } finally {
+            AntiTamperHelper.mockExistingFilesForTest = null
+        }
+    }
 }

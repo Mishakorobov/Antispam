@@ -285,7 +285,7 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
                 openLocationSettings()
             }
             SecurityIssueType.ROOT_OR_HOOK_ENVIRONMENT -> {
-                openSecuritySettings()
+                AntiTamperHelper.openRootManagerOrSecuritySettings(getApplication())
             }
         }
     }

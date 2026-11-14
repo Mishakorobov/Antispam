@@ -90,18 +90,23 @@ object AntiTamperHelper {
         "/vendor/bin/su",
         "/data/local/xbin/su",
         "/data/local/bin/su",
-        "/system/sd/xbin/su"
+        "/system/sd/xbin/su",
+        "/data/adb/magisk",
+        "/data/adb/ksu",
+        "/data/adb/modules"
     )
 
     private val KNOWN_ROOT_PACKAGES = listOf(
         "com.topjohnwu.magisk",
         "me.weishu.kernelsu",
+        "io.github.a13e300.ksu",
         "eu.chainfire.supersu"
     )
 
     private val KNOWN_HOOK_CLASSES = listOf(
         "de.robv.android.xposed.XposedBridge",
-        "com.saurik.substrate.MS\$MethodHook"
+        "com.saurik.substrate.MS\$MethodHook",
+        "top.canyie.pine.Pine"
     )
 
     private val _verificationFlow = MutableStateFlow<SignatureVerificationResult?>(null)
@@ -367,6 +372,32 @@ object AntiTamperHelper {
             enforceSecureWindow(activity)
         } else {
             clearSecureWindow(activity)
+        }
+    }
+
+    /**
+     * Launches installed root manager (Magisk / KernelSU / SuperSU) so the user can inspect permissions,
+     * or falls back to system Security Settings.
+     */
+    fun openRootManagerOrSecuritySettings(context: Context): Boolean {
+        val pm = context.packageManager
+        for (pkg in KNOWN_ROOT_PACKAGES) {
+            try {
+                val launchIntent = pm.getLaunchIntentForPackage(pkg)
+                if (launchIntent != null) {
+                    launchIntent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(launchIntent)
+                    return true
+                }
+            } catch (_: Exception) {}
+        }
+        return try {
+            val intent = android.content.Intent(android.provider.Settings.ACTION_SECURITY_SETTINGS)
+            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+            true
+        } catch (_: Exception) {
+            false
         }
     }
 }
