@@ -39,6 +39,18 @@ object NetworkModule {
             .build()
     }
 
+    /**
+     * Optimized OkHttpClient for multi-vendor CDN fallback.
+     * Features aggressive 6s connection timeout to fail fast past throttled/blocked TSPU domains.
+     */
+    val cdnHttpClient: OkHttpClient by lazy {
+        okHttpClient.newBuilder()
+            .connectTimeout(6, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
+            .build()
+    }
+
     fun createApiService(baseUrl: String = DEFAULT_BASE_URL): AntiSpamApiService {
         val contentType = "application/json".toMediaType()
         val retrofit = Retrofit.Builder()

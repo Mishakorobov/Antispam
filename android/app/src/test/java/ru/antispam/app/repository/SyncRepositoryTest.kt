@@ -106,4 +106,40 @@ class SyncRepositoryTest {
         assertEquals("FOREIGN_PLUS7", SyncRepository.categoryByteToString(7))
         assertEquals("SPAM", SyncRepository.categoryByteToString(99)) // fallback default
     }
+
+    @Test
+    fun test_defaultCdnUrls_multiVendorResilience() {
+        val mirrors = SyncRepository.DEFAULT_CDN_URLS
+        assertTrue("Must have at least 4 independent CDN mirrors", mirrors.size >= 4)
+
+        // Verify multi-vendor distinct ASNs and jurisdictions
+        assertTrue("Must include GitHub Releases mirror", mirrors.any { it.contains("github.com") && it.contains("releases") })
+        assertTrue("Must include jsDelivr Global Edge CDN mirror", mirrors.any { it.contains("cdn.jsdelivr.net") })
+        assertTrue("Must include GitHub Raw mirror", mirrors.any { it.contains("raw.githubusercontent.com") })
+        assertTrue("Must include GitFlic Russian sovereign hosting mirror", mirrors.any { it.contains("gitflic.ru") })
+    }
+
+    @Test
+    fun test_prioritizeMirrors_elevatesPreferredMirrorToFirstPosition() {
+        val defaultList = listOf(
+            "https://mirror1.com/pools.aspb",
+            "https://mirror2.com/pools.aspb",
+            "https://mirror3.com/pools.aspb"
+        )
+
+        // When preferred is null or blank, keep original order
+        assertEquals(defaultList, SyncRepository.prioritizeMirrors(null, defaultList))
+        assertEquals(defaultList, SyncRepository.prioritizeMirrors("", defaultList))
+
+        // When preferred is in the list, elevate it to first
+        val prioritized = SyncRepository.prioritizeMirrors("https://mirror3.com/pools.aspb", defaultList)
+        assertEquals("https://mirror3.com/pools.aspb", prioritized[0])
+        assertEquals("https://mirror1.com/pools.aspb", prioritized[1])
+        assertEquals("https://mirror2.com/pools.aspb", prioritized[2])
+        assertEquals(3, prioritized.size)
+
+        // When preferred is unknown/not in the list, fallback to default order
+        val unknown = SyncRepository.prioritizeMirrors("https://unknown.com/pools.aspb", defaultList)
+        assertEquals(defaultList, unknown)
+    }
 }

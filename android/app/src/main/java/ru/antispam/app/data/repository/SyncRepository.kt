@@ -27,7 +27,8 @@ sealed class SyncResult {
         val source: SyncSource,
         val currentVersion: Long,
         val addedCount: Int,
-        val removedCount: Int
+        val removedCount: Int,
+        val cdnMirrorUsed: String? = null
     ) : SyncResult()
 
     object NotModified : SyncResult()
@@ -51,7 +52,7 @@ data class ParsedAspb(
 class SyncRepository(
     private val db: AppDatabase,
     private val api: AntiSpamApiService = NetworkModule.apiService,
-    private val httpClient: OkHttpClient = NetworkModule.okHttpClient,
+    private val httpClient: OkHttpClient = NetworkModule.cdnHttpClient,
     private val fallbackCdnUrls: List<String> = DEFAULT_CDN_URLS
 ) {
 
@@ -60,11 +61,31 @@ class SyncRepository(
         const val KEY_LAST_DELTA_VERSION = "last_delta_version"
         const val KEY_LAST_SYNC_TIMESTAMP = "last_sync_timestamp"
         const val KEY_LAST_SYNC_SOURCE = "last_sync_source"
+        const val KEY_PREFERRED_CDN_MIRROR = "preferred_cdn_mirror"
+        const val KEY_LAST_USED_CDN_MIRROR = "last_used_cdn_mirror"
 
+        /**
+         * Multi-Vendor CDN Mirrors across distinct autonomous systems (ASNs) and jurisdictions.
+         * Resilient against regional ISP throttling and TSPU DPI blocks in Russia.
+         */
         val DEFAULT_CDN_URLS = listOf(
+            // Mirror 1: Official GitHub Releases binary asset
             "https://github.com/Mishakorobov/Antispam/releases/download/latest-data/pools.aspb",
-            "https://raw.githubusercontent.com/Mishakorobov/Antispam/main/data/pools.aspb"
+            // Mirror 2: jsDelivr Global Edge CDN (Cloudflare/Fastly backbone, bypasses Russian TSPU GitHub filtering)
+            "https://cdn.jsdelivr.net/gh/Mishakorobov/Antispam@main/data/pools.aspb",
+            // Mirror 3: GitHub Raw CDN
+            "https://raw.githubusercontent.com/Mishakorobov/Antispam/main/data/pools.aspb",
+            // Mirror 4: Sovereign Russian Git hosting mirror (GitFlic)
+            "https://gitflic.ru/project/mishakorobov/antispam/blob/raw?file=data/pools.aspb"
         )
+
+        fun prioritizeMirrors(preferred: String?, mirrors: List<String>): List<String> {
+            return if (!preferred.isNullOrBlank() && mirrors.contains(preferred)) {
+                listOf(preferred) + mirrors.filter { it != preferred }
+            } else {
+                mirrors
+            }
+        }
 
         /**
          * Pure parser for ASPB binary protocol payload.
@@ -252,10 +273,24 @@ class SyncRepository(
         )
     }
 
+    /**
+     * Prioritizes the last successfully connected CDN mirror to provide instant, zero-penalty sync,
+     * while retaining full multi-vendor fallback resilience.
+     */
+    fun getOrderedCdnMirrors(): List<String> {
+        val preferred = try {
+            db.syncMetadataDao().getValueStr(KEY_PREFERRED_CDN_MIRROR)
+        } catch (e: Exception) {
+            null
+        }
+        return prioritizeMirrors(preferred, fallbackCdnUrls)
+    }
+
     private suspend fun executeCdnFallback(): SyncResult {
         var lastException: Throwable? = null
+        val mirrors = getOrderedCdnMirrors()
 
-        for (url in fallbackCdnUrls) {
+        for (url in mirrors) {
             try {
                 Log.d(TAG, "Attempting CDN fallback fetch from: $url")
                 val request = Request.Builder()
@@ -295,6 +330,8 @@ class SyncRepository(
                         db.syncMetadataDao().setValueLong(KEY_LAST_DELTA_VERSION, parsed.currentVersion)
                         db.syncMetadataDao().setValueLong(KEY_LAST_SYNC_TIMESTAMP, now)
                         db.syncMetadataDao().setValueStr(KEY_LAST_SYNC_SOURCE, SyncSource.CDN_FALLBACK.name)
+                        db.syncMetadataDao().setValueStr(KEY_PREFERRED_CDN_MIRROR, url)
+                        db.syncMetadataDao().setValueStr(KEY_LAST_USED_CDN_MIRROR, url)
                     }
 
                     Log.i(TAG, "CDN Fallback successful via $url! Loaded ${parsed.added.size} pools (v${parsed.currentVersion})")
@@ -302,11 +339,12 @@ class SyncRepository(
                         source = SyncSource.CDN_FALLBACK,
                         currentVersion = parsed.currentVersion,
                         addedCount = parsed.added.size,
-                        removedCount = parsed.removed.size
+                        removedCount = parsed.removed.size,
+                        cdnMirrorUsed = url
                     )
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "CDN mirror $url failed: ${e.message}")
+                Log.w(TAG, "CDN mirror $url failed: ${e.message}. Failing over to next mirror...")
                 lastException = e
             }
         }
