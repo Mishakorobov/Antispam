@@ -49,7 +49,8 @@ data class TriangulationRiskApp(
     val activeVectorsCount: Int,
     val riskDescription: String,
     val warningBadges: List<String>,
-    val isDeepSleeping: Boolean = false
+    val isDeepSleeping: Boolean = false,
+    val isTrusted: Boolean = false
 )
 
 /**

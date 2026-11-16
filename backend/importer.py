@@ -27,7 +27,7 @@ def score_small_b2b_sip_aggregators(session: Session) -> None:
         session.query(
             RegistryRangeStaging.inn,
             RegistryRangeStaging.operator_clean,
-            RegistryRangeStaging.operator_name,
+            func.max(RegistryRangeStaging.operator_name).label("operator_name"),
             func.sum(RegistryRangeStaging.capacity).label("total_cap")
         )
         .group_by(RegistryRangeStaging.inn, RegistryRangeStaging.operator_clean)

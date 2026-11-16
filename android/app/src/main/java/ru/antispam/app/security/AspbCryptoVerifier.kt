@@ -154,13 +154,27 @@ object AspbCryptoVerifier {
             val bodyOffset = ASPB_V2_HEADER_SIZE
             val bodyLength = bytes.size - bodyOffset
 
-            val isValid = verifyEd25519Signature(
+            var isValid = verifyEd25519Signature(
                 data = bytes,
                 dataOffset = bodyOffset,
                 dataLength = bodyLength,
                 signature = signatureBytes,
-                publicKeyBytes = pubKeyBytes
+                publicKeyBytes = pubKeyBytes,
+                headerOffset = 0,
+                headerLength = ASPB_HEADER_SIZE
             )
+            // Fallback for transition/legacy body-only signatures if header-authenticated check fails
+            if (!isValid) {
+                isValid = verifyEd25519Signature(
+                    data = bytes,
+                    dataOffset = bodyOffset,
+                    dataLength = bodyLength,
+                    signature = signatureBytes,
+                    publicKeyBytes = pubKeyBytes,
+                    headerOffset = 0,
+                    headerLength = 0
+                )
+            }
 
             return if (isValid) {
                 Log.i(TAG, "ASPB snapshot v$currentVer cryptographically verified via Ed25519! Signature: ${signatureHex.take(16)}... (dynamicConfigLen=$dynamicConfigLen)")
@@ -184,18 +198,24 @@ object AspbCryptoVerifier {
 
     /**
      * Pure Ed25519 signature verification using BouncyCastle.
+     * Supports multi-segment header + body verification (Authenticated Additional Data).
      */
     fun verifyEd25519Signature(
         data: ByteArray,
         dataOffset: Int,
         dataLength: Int,
         signature: ByteArray,
-        publicKeyBytes: ByteArray
+        publicKeyBytes: ByteArray,
+        headerOffset: Int = 0,
+        headerLength: Int = 0
     ): Boolean {
         return try {
             val verifier = Ed25519Signer()
             val pubParams = Ed25519PublicKeyParameters(publicKeyBytes, 0)
             verifier.init(false, pubParams)
+            if (headerLength > 0) {
+                verifier.update(data, headerOffset, headerLength)
+            }
             verifier.update(data, dataOffset, dataLength)
             verifier.verifySignature(signature)
         } catch (e: Exception) {

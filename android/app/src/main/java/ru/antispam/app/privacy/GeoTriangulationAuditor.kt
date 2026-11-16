@@ -293,16 +293,26 @@ object GeoTriangulationAuditor {
 
                 val appRisk = classifyRisk(pkgName, appName, grantedPerms, isSystem)
                 val isDeepSleeping = AppDormancyHelper.isAppInDeepSleep(context, pkgName)
+                val isTrusted = TrustedAppManager.isAppTrusted(context, pkgName)
 
-                val finalRisk = if (isDeepSleeping) {
-                    appRisk.copy(
-                        riskLevel = TriangulationRiskLevel.SAFE,
-                        riskDescription = "Приложение находится в глубоком сне (заморожено системой). Фоновый сбор геопозиции и Wi-Fi BSSID заблокирован.",
-                        warningBadges = listOf("Глубокий сон"),
-                        isDeepSleeping = true
-                    )
-                } else {
-                    appRisk
+                val finalRisk = when {
+                    isTrusted -> {
+                        appRisk.copy(
+                            riskLevel = TriangulationRiskLevel.SAFE,
+                            riskDescription = "Приложение добавлено в список доверенных. Исключено из угроз.",
+                            warningBadges = listOf("Доверенное"),
+                            isTrusted = true
+                        )
+                    }
+                    isDeepSleeping -> {
+                        appRisk.copy(
+                            riskLevel = TriangulationRiskLevel.SAFE,
+                            riskDescription = "Приложение находится в глубоком сне (заморожено системой). Фоновый сбор геопозиции и Wi-Fi BSSID заблокирован.",
+                            warningBadges = listOf("Глубокий сон"),
+                            isDeepSleeping = true
+                        )
+                    }
+                    else -> appRisk
                 }
 
                 // Only include apps with actionable risks or deep sleep info if previously risky
@@ -329,8 +339,8 @@ object GeoTriangulationAuditor {
      */
     fun auditSummary(context: Context): TriangulationAuditSummary {
         val apps = auditLocationAndWifiPermissions(context)
-        val critical = apps.count { it.riskLevel == TriangulationRiskLevel.CRITICAL && !it.isDeepSleeping }
-        val high = apps.count { it.riskLevel == TriangulationRiskLevel.HIGH && !it.isDeepSleeping }
+        val critical = apps.count { it.riskLevel == TriangulationRiskLevel.CRITICAL && !it.isDeepSleeping && !it.isTrusted }
+        val high = apps.count { it.riskLevel == TriangulationRiskLevel.HIGH && !it.isDeepSleeping && !it.isTrusted }
 
         return TriangulationAuditSummary(
             apps = apps,

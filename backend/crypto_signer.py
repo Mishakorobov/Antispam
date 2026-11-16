@@ -105,13 +105,13 @@ def sign_aspb_payload(
         else:
             raise ValueError(f"Unsupported ASPB proto version: {proto_ver}")
 
+    v2_header = struct.pack(">4sHIHI", b"ASPB", 2, current_ver, flags, dynamic_config_len)
     priv_key = load_private_key(private_key_bytes_or_hex)
-    signature = priv_key.sign(body)
+    # Sign both header (metadata) and body to guarantee cryptographic integrity of version and flags
+    signature = priv_key.sign(v2_header + body)
     if len(signature) != 64:
         raise RuntimeError(f"Unexpected signature length: {len(signature)}")
 
-    # Construct ASPB v2 header: proto_version=2
-    v2_header = struct.pack(">4sHIHI", b"ASPB", 2, current_ver, flags, dynamic_config_len)
     return v2_header + signature + body
 
 
@@ -159,10 +159,15 @@ def verify_aspb_payload(
 
     signature = payload[16:80]
     body = payload[80:]
+    signed_data = payload[:16] + body
 
     try:
         pub_key = load_public_key(public_key_bytes_or_hex)
-        pub_key.verify(signature, body)
+        try:
+            pub_key.verify(signature, signed_data)
+        except Exception:
+            # Fallback for transition / legacy body-only snapshots
+            pub_key.verify(signature, body)
         return True, f"Valid Ed25519 signature for ASPB v2 (current_ver={current_ver}, body_len={len(body)}, dynamic_config_len={dynamic_config_len})"
     except Exception as e:
         return False, f"Signature verification failed: {e}"
@@ -179,4 +184,3 @@ def verify_aspb_file(
         return False, f"File not found: {file_path}"
 
     return verify_aspb_payload(path.read_bytes(), public_key_bytes_or_hex, local_version=local_version)
-    return verify_aspb_payload(path.read_bytes(), public_key_bytes_or_hex)

@@ -47,6 +47,9 @@ class AntiSpamApplication : Application() {
         // Schedule periodic background sync via WorkManager
         SyncPoolsWorker.schedulePeriodicSync(this)
 
+        // Phase 12.2: Register live telephony listener for covert call forwarding detection
+        ru.antispam.app.privacy.CallForwardingAuditor.registerTelephonyListener(this)
+
         // Show ongoing protection status card in notification shade
         ProtectionStatusNotificationManager.updateNotification(this)
     }

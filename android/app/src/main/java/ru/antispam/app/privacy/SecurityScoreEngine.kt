@@ -38,6 +38,7 @@ object SecurityScoreEngine {
     const val PENALTY_STEALTH_GEO = 5
     const val PENALTY_CALL_FORWARDING = 15
     const val PENALTY_2G_DOWNGRADE = 15
+    const val PENALTY_UNTRUSTED_APPS = 10
 
     /**
      * Calculates the security score report based on the provided audit inputs.
@@ -216,6 +217,22 @@ object SecurityScoreEngine {
                     severity = SecurityIssueSeverity.CRITICAL,
                     scoreDeduction = PENALTY_2G_DOWNGRADE,
                     actionLabel = "Отключить 2G"
+                )
+            )
+        }
+
+        // Phase 13.6: Untrusted Apps with invasive telephony/audio/package permissions
+        if (input.hasUntrustedAppThreats) {
+            score -= PENALTY_UNTRUSTED_APPS
+            issues.add(
+                SecurityIssue(
+                    id = "untrusted_app_threats",
+                    type = SecurityIssueType.UNTRUSTED_APP_THREATS,
+                    title = "Недоверенные приложения с опасными правами",
+                    description = "Обнаружены приложения с доступом к звонкам/микрофону. Добавьте их в доверенные или ограничьте доступ.",
+                    severity = SecurityIssueSeverity.HIGH,
+                    scoreDeduction = PENALTY_UNTRUSTED_APPS,
+                    actionLabel = "Доверять приложению"
                 )
             )
         }

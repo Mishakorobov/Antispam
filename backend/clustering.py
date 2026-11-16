@@ -1,7 +1,7 @@
 import ipaddress
 from datetime import datetime, timedelta
 import logging
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 from backend.config import settings
 from backend.models import (
@@ -117,7 +117,7 @@ def create_active_block(
             ActiveBlock.status == "ACTIVE",
             ActiveBlock.range_start <= range_start,
             ActiveBlock.range_end >= range_end,
-            not (ActiveBlock.range_start == range_start and ActiveBlock.range_end == range_end),
+            or_(ActiveBlock.range_start != range_start, ActiveBlock.range_end != range_end),
         )
         .first()
     )
@@ -143,7 +143,7 @@ def create_active_block(
             ActiveBlock.status == "ACTIVE",
             ActiveBlock.range_start >= range_start,
             ActiveBlock.range_end <= range_end,
-            not (ActiveBlock.range_start == range_start and ActiveBlock.range_end == range_end),
+            or_(ActiveBlock.range_start != range_start, ActiveBlock.range_end != range_end),
         )
         .all()
     )

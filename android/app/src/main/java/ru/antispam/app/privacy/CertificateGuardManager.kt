@@ -34,27 +34,18 @@ object CertificateGuardManager {
 
     /**
      * Extracts Common Name (CN) and Organization (O) from an X.500 Distinguished Name (DN) string.
+     * Compliant with RFC 2253, safely supporting commas within quotes or escaped characters.
      */
     fun extractCnAndOrg(dn: String): Pair<String, String> {
-        var cn = ""
-        var org = ""
-
-        val parts = dn.split(",")
-        for (part in parts) {
-            val trimmed = part.trim()
-            val lower = trimmed.lowercase()
-            if (lower.startsWith("cn=")) {
-                cn = trimmed.substring(3).trim().trim('"', '\'')
-            } else if (lower.startsWith("o=")) {
-                org = trimmed.substring(2).trim().trim('"', '\'')
-            }
-        }
-
-        if (cn.isBlank()) {
-            cn = dn
-        }
-
+        val cn = extractAttribute(dn, "CN") ?: dn
+        val org = extractAttribute(dn, "O") ?: ""
         return Pair(cn, org)
+    }
+
+    private fun extractAttribute(dn: String, attribute: String): String? {
+        val regex = Regex("""(?:^|,\s*)$attribute=(?:"([^"]*)"|([^,]+))""", RegexOption.IGNORE_CASE)
+        val match = regex.find(dn)
+        return match?.let { it.groups[1]?.value ?: it.groups[2]?.value }?.trim()?.trim('"', '\'')
     }
 
     /**

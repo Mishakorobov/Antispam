@@ -286,7 +286,8 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
                 hasStealthGeoTrackers = triangulationAudit.criticalCount > 0,
                 hasRootOrHooks = envReport.hasPrivilegeOrHookExposure,
                 hasCallForwarding = forwardingReport.hasActiveForwarding,
-                hasActive2GConnection = cellularReport.is2GActive
+                hasActive2GConnection = cellularReport.is2GActive,
+                hasUntrustedAppThreats = criticalCount > 0
             )
             val scoreReport = SecurityScoreEngine.calculateScore(auditInput)
 
@@ -508,6 +509,9 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
             }
             SecurityIssueType.CELLULAR_2G_DOWNGRADE_ACTIVE -> {
                 openCellularSettings()
+            }
+            SecurityIssueType.UNTRUSTED_APP_THREATS -> {
+                // Focus user on installed app threat inspection
             }
         }
     }

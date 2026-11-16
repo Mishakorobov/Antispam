@@ -14,7 +14,8 @@ enum class SecurityIssueType {
     STEALTH_GEO_DETECTED,
     ROOT_OR_HOOK_ENVIRONMENT, // Phase 11.1: Soft advisory warning for Root/Magisk/Frida
     CALL_FORWARDING_ACTIVE, // Phase 12.2: Rogue or unknown call forwarding active
-    CELLULAR_2G_DOWNGRADE_ACTIVE // Phase 12.3: Active 2G cellular downgrade vulnerability
+    CELLULAR_2G_DOWNGRADE_ACTIVE, // Phase 12.3: Active 2G cellular downgrade vulnerability
+    UNTRUSTED_APP_THREATS // Phase 13.6: Untrusted apps with critical phone/mic/location access
 }
 
 /**
@@ -54,7 +55,8 @@ data class PrivacyAuditInput(
     val hasStealthGeoTrackers: Boolean = false,
     val hasRootOrHooks: Boolean = false,
     val hasCallForwarding: Boolean = false,
-    val hasActive2GConnection: Boolean = false
+    val hasActive2GConnection: Boolean = false,
+    val hasUntrustedAppThreats: Boolean = false
 )
 
 /**

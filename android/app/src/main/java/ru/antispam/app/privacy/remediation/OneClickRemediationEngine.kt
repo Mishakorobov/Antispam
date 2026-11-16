@@ -18,6 +18,7 @@ import ru.antispam.app.privacy.ClipboardGuardManager
 import ru.antispam.app.privacy.GeoTriangulationAuditor
 import ru.antispam.app.privacy.MicGuardService
 import ru.antispam.app.privacy.NotificationListenerAuditor
+import ru.antispam.app.privacy.PrivacyRiskLevel
 import ru.antispam.app.privacy.SuperAppInspector
 import ru.antispam.app.privacy.TrustedAppManager
 import ru.antispam.app.privacy.VpnMaskingHelper
@@ -243,9 +244,9 @@ object OneClickRemediationEngine {
                             id = "guided_cellular_2g",
                             issueType = issue.type,
                             actionType = RemediationActionType.SYSTEM_DISABLE_2G,
-                            title = "Отключение 2G радиоканала",
+                            title = "Отключение 2G радиоканала (при наличии VoLTE)",
                             description = "Сеть 2G уязвима к перехвату ложными базовыми станциями (IMSI-Catcher)",
-                            instruction = "В параметрах сети выберите режим 'LTE/3G' или отключите тумблер 'Разрешить 2G' для защиты от радио-шпионажа.",
+                            instruction = "Внимание: убедитесь, что включены вызовы VoLTE! Только после этого выключите 'Разрешить 2G'. Если после отключения звонки не проходят («Мобильная сеть недоступна»), включите 2G обратно.",
                             actionLabel = "Настройки сети",
                             severity = issue.severity,
                             scoreImpact = issue.scoreDeduction,
@@ -305,6 +306,36 @@ object OneClickRemediationEngine {
 
                 SecurityIssueType.ROOT_OR_HOOK_ENVIRONMENT -> {
                     // Advisory warning: 0 points impact
+                }
+
+                SecurityIssueType.UNTRUSTED_APP_THREATS -> {
+                    val untrustedApps = state.scannedApps.filter {
+                        (it.riskLevel == PrivacyRiskLevel.CRITICAL || it.riskLevel == PrivacyRiskLevel.HIGH) &&
+                                !it.isDeepSleeping
+                    }
+                    for (app in untrustedApps) {
+                        guided.add(
+                            RemediationStep(
+                                id = "guided_untrusted_${app.packageName}",
+                                issueType = issue.type,
+                                actionType = RemediationActionType.SYSTEM_MANAGE_PERMISSIONS,
+                                title = "Проверка приложения: ${app.appName}",
+                                description = "Приложение запрашивает опасные разрешения (${app.threatBadges.take(2).joinToString()}). Добавьте его в доверенные или ограничьте доступ.",
+                                instruction = "Нажмите 'Доверять', если вы доверяете этому приложению, или 'Ограничить' для перехода в системные настройки.",
+                                actionLabel = "Доверять",
+                                severity = issue.severity,
+                                scoreImpact = issue.scoreDeduction,
+                                isAutoFixable = false,
+                                targetPackage = app.packageName,
+                                targetAppName = app.appName,
+                                canBeWhitelisted = true,
+                                intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                    data = Uri.parse("package:${app.packageName}")
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                            )
+                        )
+                    }
                 }
             }
         }
@@ -441,6 +472,11 @@ object OneClickRemediationEngine {
                 RemediationActionType.SYSTEM_RESTRICT_LOCATION -> {
                     val summary = GeoTriangulationAuditor.auditSummary(context)
                     summary.criticalCount == 0
+                }
+
+                RemediationActionType.SYSTEM_MANAGE_PERMISSIONS -> {
+                    val pkg = step.targetPackage ?: return true
+                    TrustedAppManager.isAppTrusted(context, pkg)
                 }
 
                 else -> true

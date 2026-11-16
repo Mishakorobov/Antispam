@@ -123,6 +123,19 @@ class MicGuardService : Service() {
         var clientSourceDesc = ""
 
         for (config in configs) {
+            // Ignore our own application's AudioRecord session (e.g. MicJammerManager)
+            val clientUid = try {
+                config.javaClass.getMethod("getClientUid").invoke(config) as? Int
+            } catch (_: Throwable) {
+                null
+            }
+            if (clientUid == android.os.Process.myUid()) {
+                continue
+            }
+            if (MicJammerManager.isJamming.value && (clientUid == null || clientUid == android.os.Process.myUid())) {
+                continue
+            }
+
             val source = config.clientAudioSource
             // Audio sources that indicate active microphone capturing by apps:
             val isMicCapture = source == MediaRecorder.AudioSource.MIC ||

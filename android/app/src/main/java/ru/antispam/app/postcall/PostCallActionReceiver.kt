@@ -40,45 +40,50 @@ class PostCallActionReceiver : BroadcastReceiver() {
 
         val action = intent.action
         val db = AppDatabase.getInstance(context)
+        val pendingResult = goAsync()
 
         CoroutineScope(Dispatchers.IO).launch {
-            if (action == ACTION_REPORT) {
-                val category = intent.getStringExtra(EXTRA_CATEGORY) ?: "SPAM"
-                val duration = intent.getIntExtra(EXTRA_DURATION, 0)
-                val deviceHash = SyncPoolsWorker.getOrCreateDeviceHash(context)
+            try {
+                if (action == ACTION_REPORT) {
+                    val category = intent.getStringExtra(EXTRA_CATEGORY) ?: "SPAM"
+                    val duration = intent.getIntExtra(EXTRA_DURATION, 0)
+                    val deviceHash = SyncPoolsWorker.getOrCreateDeviceHash(context)
 
-                try {
-                    // Try immediate upload to server
-                    NetworkModule.apiService.submitReport(
-                        SingleReportRequest(
-                            phoneNumber = phoneNumber.toString(),
-                            deviceHash = deviceHash,
-                            category = category,
-                            callDurationSeconds = duration
+                    try {
+                        // Try immediate upload to server
+                        NetworkModule.apiService.submitReport(
+                            SingleReportRequest(
+                                phoneNumber = phoneNumber.toString(),
+                                deviceHash = deviceHash,
+                                category = category,
+                                callDurationSeconds = duration
+                            )
                         )
-                    )
-                } catch (_: Exception) {
-                    // Save to local offline queue
-                    db.pendingReportDao().insert(
-                        PendingReportEntity(
+                    } catch (_: Exception) {
+                        // Save to local offline queue
+                        db.pendingReportDao().insert(
+                            PendingReportEntity(
+                                phoneNumber = phoneNumber,
+                                category = category,
+                                callDurationSeconds = duration,
+                                createdAt = System.currentTimeMillis()
+                            )
+                        )
+                    }
+
+                    showToastOnMain(context, "Спасибо! Номер добавлен в базу спама.")
+                } else if (action == ACTION_WHITELIST) {
+                    db.localWhitelistDao().add(
+                        LocalWhitelistEntity(
                             phoneNumber = phoneNumber,
-                            category = category,
-                            callDurationSeconds = duration,
-                            createdAt = System.currentTimeMillis()
+                            label = "Добавлен из Post-Call",
+                            addedAt = System.currentTimeMillis()
                         )
                     )
+                    showToastOnMain(context, "Номер добавлен в белый список.")
                 }
-
-                showToastOnMain(context, "Спасибо! Номер добавлен в базу спама.")
-            } else if (action == ACTION_WHITELIST) {
-                db.localWhitelistDao().add(
-                    LocalWhitelistEntity(
-                        phoneNumber = phoneNumber,
-                        label = "Добавлен из Post-Call",
-                        addedAt = System.currentTimeMillis()
-                    )
-                )
-                showToastOnMain(context, "Номер добавлен в белый список.")
+            } finally {
+                pendingResult.finish()
             }
         }
     }

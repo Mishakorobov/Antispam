@@ -9,6 +9,8 @@ import android.telecom.Connection
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import ru.antispam.app.data.local.AppDatabase
 import ru.antispam.app.data.local.entity.BlockedCallRecordEntity
@@ -20,9 +22,15 @@ import ru.antispam.app.worker.SyncPoolsWorker
 class AntiSpamCallScreeningService : CallScreeningService() {
 
     private val db by lazy { AppDatabase.getInstance(applicationContext) }
+    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     companion object {
         private const val TAG = "AntiSpamScreener"
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        serviceScope.cancel()
     }
 
     override fun onScreenCall(callDetails: Call.Details) {
@@ -44,6 +52,22 @@ class AntiSpamCallScreeningService : CallScreeningService() {
             return
         }
 
+        serviceScope.launch {
+            try {
+                screenCallInternal(callDetails, rawNumber, normalizedNumber, t0)
+            } catch (e: Throwable) {
+                Log.e(TAG, "Unexpected error in screening call +$normalizedNumber: ${e.message}", e)
+                allowCall(callDetails)
+            }
+        }
+    }
+
+    private fun screenCallInternal(
+        callDetails: Call.Details,
+        rawNumber: String,
+        normalizedNumber: Long,
+        t0: Long
+    ) {
         // Step 0: Verification status check (Anti-Spoofing / ЕПВВ "Антифрод")
         // If carrier signals caller ID was forged, block immediately without poisoning community pools
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -201,7 +225,7 @@ class AntiSpamCallScreeningService : CallScreeningService() {
         category: String?,
         reason: String
     ) {
-        CoroutineScope(Dispatchers.IO).launch {
+        serviceScope.launch {
             try {
                 db.blockedCallRecordDao().insert(
                     BlockedCallRecordEntity(
@@ -222,7 +246,7 @@ class AntiSpamCallScreeningService : CallScreeningService() {
     }
 
     private fun checkOpportunisticSync() {
-        CoroutineScope(Dispatchers.IO).launch {
+        serviceScope.launch {
             try {
                 val lastSync = db.syncMetadataDao().getValueLong("last_sync_timestamp") ?: 0L
                 val now = System.currentTimeMillis()

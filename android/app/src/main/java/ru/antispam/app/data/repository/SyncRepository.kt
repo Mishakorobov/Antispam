@@ -4,6 +4,8 @@ import android.content.Context
 import android.util.Log
 import androidx.room.withTransaction
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -65,6 +67,7 @@ class SyncRepository(
 
     companion object {
         private const val TAG = "SyncRepository"
+        private val syncMutex = Mutex()
         const val KEY_LAST_DELTA_VERSION = "last_delta_version"
         const val KEY_LAST_SYNC_TIMESTAMP = "last_sync_timestamp"
         const val KEY_LAST_SYNC_SOURCE = "last_sync_source"
@@ -216,35 +219,37 @@ class SyncRepository(
      * Circuit 2 (Autonomous / Fallback): High-availability binary ASPB download via GitHub Releases Global CDN.
      */
     suspend fun synchronize(deviceHash: String? = null): SyncResult = withContext(Dispatchers.IO) {
-        // Step 0: Flush offline reports (via Cloudflare Worker bridge in Serverless mode, or primary API)
-        if (deviceHash != null) {
+        syncMutex.withLock {
+            // Step 0: Flush offline reports (via Cloudflare Worker bridge in Serverless mode, or primary API)
+            if (deviceHash != null) {
+                try {
+                    flushPendingReports(deviceHash)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Non-critical: Failed to flush offline reports before sync: ${e.message}")
+                }
+            }
+
+            // Autonomous CDN Mode: Immediately fetch binary ASPB snapshot from GitHub Releases CDN
+            // without waiting for primary server connection timeouts
+            if (NetworkModule.isServerlessMode) {
+                Log.i(TAG, "Autonomous CDN Mode active: Synchronizing directly via GitHub Releases Global CDN...")
+                return@withLock executeCdnFallback()
+            }
+
+            // Circuit 1: Primary API
             try {
-                flushPendingReports(deviceHash)
+                val primaryResult = executePrimarySync()
+                if (primaryResult != null) {
+                    return@withLock primaryResult
+                }
             } catch (e: Exception) {
-                Log.w(TAG, "Non-critical: Failed to flush offline reports before sync: ${e.message}")
+                Log.w(TAG, "Circuit 1 (Primary API) failed: ${e.message}. Failing over to Circuit 2 (CDN Fallback)...")
             }
-        }
 
-        // Autonomous CDN Mode: Immediately fetch binary ASPB snapshot from GitHub Releases CDN
-        // without waiting for primary server connection timeouts
-        if (NetworkModule.isServerlessMode) {
-            Log.i(TAG, "Autonomous CDN Mode active: Synchronizing directly via GitHub Releases Global CDN...")
-            return@withContext executeCdnFallback()
+            // Circuit 2: Secondary CDN Fallback
+            Log.i(TAG, "Engaging Circuit 2 (CDN Fallback) across ${fallbackCdnUrls.size} mirrors...")
+            executeCdnFallback()
         }
-
-        // Circuit 1: Primary API
-        try {
-            val primaryResult = executePrimarySync()
-            if (primaryResult != null) {
-                return@withContext primaryResult
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Circuit 1 (Primary API) failed: ${e.message}. Failing over to Circuit 2 (CDN Fallback)...")
-        }
-
-        // Circuit 2: Secondary CDN Fallback
-        Log.i(TAG, "Engaging Circuit 2 (CDN Fallback) across ${fallbackCdnUrls.size} mirrors...")
-        executeCdnFallback()
     }
 
     private suspend fun executePrimarySync(): SyncResult? {
@@ -256,6 +261,7 @@ class SyncRepository(
         // HTTP 304: Client is already up to date
         if (response.code() == 304) {
             Log.i(TAG, "Primary Sync HTTP 304 Not Modified (v$lastVersion). 0 bytes transferred.")
+            db.syncMetadataDao().setValueLong(KEY_LAST_SYNC_TIMESTAMP, System.currentTimeMillis())
             return SyncResult.NotModified
         }
 
@@ -351,6 +357,7 @@ class SyncRepository(
 
                     if (parsed.currentVersion <= lastVersion && lastVersion > 0L && db.blockedPoolDao().getCount() > 0) {
                         Log.i(TAG, "CDN snapshot v${parsed.currentVersion} already applied (local is v$lastVersion). Up-to-date.")
+                        db.syncMetadataDao().setValueLong(KEY_LAST_SYNC_TIMESTAMP, now)
                         return SyncResult.NotModified
                     }
 

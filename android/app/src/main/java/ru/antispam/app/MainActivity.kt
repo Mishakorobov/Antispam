@@ -1,14 +1,18 @@
 package ru.antispam.app
 
+import android.Manifest
 import android.app.role.RoleManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -81,6 +85,36 @@ class MainActivity : ComponentActivity() {
         callLogViewModel.refreshData()
     }
 
+    private val runtimePermissionsLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val contactsGranted = permissions[Manifest.permission.READ_CONTACTS] ?: false
+        if (contactsGranted) {
+            ru.antispam.app.util.ContactLookupHelper.invalidateCache()
+        }
+        callLogViewModel.refreshData()
+        privacyViewModel.refreshScan()
+    }
+
+    private fun requestEssentialPermissions() {
+        val permissionsToRequest = mutableListOf(
+            Manifest.permission.READ_CONTACTS,
+            Manifest.permission.READ_PHONE_STATE,
+            Manifest.permission.READ_CALL_LOG,
+            Manifest.permission.WRITE_CALL_LOG,
+            Manifest.permission.RECEIVE_SMS
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        val missing = permissionsToRequest.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isNotEmpty()) {
+            runtimePermissionsLauncher.launch(missing.toTypedArray())
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -104,9 +138,14 @@ class MainActivity : ComponentActivity() {
                     ZeroTelemetryManifestScreen(
                         onAccept = {
                             manifestAccepted = true
+                            requestEssentialPermissions()
+                            requestCallScreeningRole()
                         }
                     )
                 } else {
+                    LaunchedEffect(Unit) {
+                        requestEssentialPermissions()
+                    }
                     MainAppScaffold(
                         callLogViewModel = callLogViewModel,
                         whitelistViewModel = whitelistViewModel,
@@ -127,6 +166,7 @@ class MainActivity : ComponentActivity() {
         privacyViewModel.refreshScan()
         settingsViewModel.loadSettings()
         ProtectionStatusNotificationManager.updateNotification(this)
+        ru.antispam.app.privacy.ClipboardGuardManager.inspectCurrentClipboardOnForeground(this)
     }
 
     private fun requestCallScreeningRole() {

@@ -44,8 +44,9 @@ object PrivilegedRemediationExecutor {
 
     /**
      * Executes a privileged root shell command with a timeout.
+     * Default timeout is 15 seconds to allow user interaction with Magisk/KernelSU root permission prompts.
      */
-    suspend fun executeRootCommand(command: String, timeoutSeconds: Long = 4): Boolean = withContext(Dispatchers.IO) {
+    suspend fun executeRootCommand(command: String, timeoutSeconds: Long = 15): Boolean = withContext(Dispatchers.IO) {
         try {
             val process = ProcessBuilder("su", "-c", command)
                 .redirectErrorStream(true)

@@ -306,6 +306,48 @@ object ClipboardGuardManager {
     }
 
     /**
+     * Inspects current clipboard when the application enters foreground,
+     * overcoming Android 10+ background clipboard access limitations safely.
+     */
+    fun inspectCurrentClipboardOnForeground(context: Context) {
+        if (!_isGuarding.value) return
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
+        try {
+            val clip = clipboard.primaryClip
+            if (clip != null && clip.itemCount > 0) {
+                val text = clip.getItemAt(0).text?.toString()
+                processClipText(
+                    context = context,
+                    text = text,
+                    onShredOtp = {
+                        Handler(Looper.getMainLooper()).post {
+                            try {
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                                    clipboard.clearPrimaryClip()
+                                } else {
+                                    clipboard.setPrimaryClip(ClipData.newPlainText("", ""))
+                                }
+                                val count = incrementShreddedOtpCount(context)
+                                Log.i(TAG, "Foreground shred completed. Total shredded 2FA OTPs: $count")
+                            } catch (_: Exception) {}
+                        }
+                    },
+                    onSanitizeLink = { sanitizedUrl ->
+                        Handler(Looper.getMainLooper()).post {
+                            try {
+                                clipboard.setPrimaryClip(ClipData.newPlainText("", sanitizedUrl))
+                                Log.i(TAG, "Foreground sanitized link written to clipboard: $sanitizedUrl")
+                            } catch (_: Exception) {}
+                        }
+                    }
+                )
+            }
+        } catch (e: Exception) {
+            Log.d(TAG, "Could not inspect primary clip on foreground: ${e.message}")
+        }
+    }
+
+    /**
      * Stops clipboard monitoring and cancels pending shred jobs.
      */
     fun stopGuard(context: Context) {

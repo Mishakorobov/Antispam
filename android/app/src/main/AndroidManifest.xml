@@ -14,6 +14,7 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
     <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
 
     <!-- Phase 5: Call Privacy Shield & Mic Guard permissions -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
