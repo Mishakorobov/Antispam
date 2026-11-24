@@ -12,9 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import ru.antispam.app.data.local.AppDatabase
 import ru.antispam.app.data.local.entity.LocalWhitelistEntity
-import ru.antispam.app.data.local.entity.PendingReportEntity
-import ru.antispam.app.data.remote.NetworkModule
-import ru.antispam.app.data.remote.dto.SingleReportRequest
+import ru.antispam.app.data.repository.SyncRepository
 import ru.antispam.app.worker.SyncPoolsWorker
 
 class PostCallActionReceiver : BroadcastReceiver() {
@@ -48,28 +46,13 @@ class PostCallActionReceiver : BroadcastReceiver() {
                     val category = intent.getStringExtra(EXTRA_CATEGORY) ?: "SPAM"
                     val duration = intent.getIntExtra(EXTRA_DURATION, 0)
                     val deviceHash = SyncPoolsWorker.getOrCreateDeviceHash(context)
-
-                    try {
-                        // Try immediate upload to server
-                        NetworkModule.apiService.submitReport(
-                            SingleReportRequest(
-                                phoneNumber = phoneNumber.toString(),
-                                deviceHash = deviceHash,
-                                category = category,
-                                callDurationSeconds = duration
-                            )
-                        )
-                    } catch (_: Exception) {
-                        // Save to local offline queue
-                        db.pendingReportDao().insert(
-                            PendingReportEntity(
-                                phoneNumber = phoneNumber,
-                                category = category,
-                                callDurationSeconds = duration,
-                                createdAt = System.currentTimeMillis()
-                            )
-                        )
-                    }
+                    val repository = SyncRepository(db = db, context = context)
+                    repository.submitOrQueueReport(
+                        phoneNumber = phoneNumber,
+                        deviceHash = deviceHash,
+                        category = category,
+                        callDurationSeconds = duration
+                    )
 
                     showToastOnMain(context, "Спасибо! Номер добавлен в базу спама.")
                 } else if (action == ACTION_WHITELIST) {

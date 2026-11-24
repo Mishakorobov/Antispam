@@ -315,8 +315,8 @@ object GeoTriangulationAuditor {
                     else -> appRisk
                 }
 
-                // Only include apps with actionable risks or deep sleep info if previously risky
-                if (finalRisk.riskLevel != TriangulationRiskLevel.SAFE || isDeepSleeping) {
+                // Exclude safe, trusted, and deep-sleeping apps to avoid noise
+                if (finalRisk.riskLevel != TriangulationRiskLevel.SAFE && !isDeepSleeping && !isTrusted) {
                     results.add(finalRisk)
                 }
             }

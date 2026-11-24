@@ -26,6 +26,20 @@ class AntiSpamCallScreeningService : CallScreeningService() {
 
     companion object {
         private const val TAG = "AntiSpamScreener"
+
+        internal fun shouldBlockPoolCategory(
+            category: String?,
+            blockSurveys: Boolean,
+            blockFinancial: Boolean,
+            blockSilent: Boolean
+        ): Boolean {
+            return when (category?.uppercase()) {
+                "SURVEY" -> blockSurveys
+                "FINANCIAL" -> blockFinancial
+                "SILENT" -> blockSilent
+                else -> true
+            }
+        }
     }
 
     override fun onDestroy() {
@@ -95,9 +109,13 @@ class AntiSpamCallScreeningService : CallScreeningService() {
             }
         }
 
-        // Step 1: Instant check for contacts or local whitelist (< 1ms with LRU cache)
+        // Step 1: Instant check for contacts, local whitelist, or enabled official groups (< 1ms)
         val isContact = ContactLookupHelper.isContact(contentResolver, rawNumber, normalizedNumber)
-        val isWhitelisted = db.localWhitelistDao().isWhitelisted(normalizedNumber)
+        val isWhitelisted = db.localWhitelistDao().isWhitelisted(normalizedNumber) ||
+            ru.antispam.app.util.OfficialWhitelistRegistry.isWhitelistedByEnabledGroup(
+                applicationContext,
+                normalizedNumber
+            )
 
         if (isContact || isWhitelisted) {
             val durationMs = (SystemClock.elapsedRealtimeNanos() - t0) / 1_000_000.0
@@ -163,6 +181,19 @@ class AntiSpamCallScreeningService : CallScreeningService() {
         val durationMs = (SystemClock.elapsedRealtimeNanos() - t0) / 1_000_000.0
 
         if (pool != null) {
+            val settingsPrefs = applicationContext.getSharedPreferences("antispam_settings", MODE_PRIVATE)
+            val categoryBlocked = shouldBlockPoolCategory(
+                category = pool.category,
+                blockSurveys = settingsPrefs.getBoolean("block_surveys", true),
+                blockFinancial = settingsPrefs.getBoolean("block_financial", true),
+                blockSilent = settingsPrefs.getBoolean("block_silent", true)
+            )
+            if (!categoryBlocked) {
+                Log.d(TAG, "ALLOWED (Category ${pool.category} disabled in settings): +$normalizedNumber in ${"%.2f".format(durationMs)} ms")
+                allowCall(callDetails)
+                return
+            }
+
             val isDeliveryMode = DeliveryModeManager.isDeliveryModeActive(applicationContext)
 
             if (isDeliveryMode) {

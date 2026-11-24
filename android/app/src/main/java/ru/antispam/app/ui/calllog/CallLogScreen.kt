@@ -1,5 +1,6 @@
 package ru.antispam.app.ui.calllog
 
+import android.provider.CallLog
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -233,7 +234,8 @@ private fun CallItemRow(
         ) {
             // Icon Badge
             val (icon, tint) = when {
-                item.isBlockedPool -> Icons.Rounded.Block to AppleRed
+                item.isCancelledByApp -> Icons.Rounded.Block to AppleRed
+                item.isBlockedPool && item.callType != CallLog.Calls.OUTGOING_TYPE -> Icons.Rounded.ReportProblem to AppleOrange
                 item.isSuspiciousShort -> Icons.Rounded.ReportProblem to AppleOrange
                 else -> Icons.Rounded.Call to AppleMintGreen
             }
@@ -262,15 +264,65 @@ private fun CallItemRow(
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
+                if (item.isCancelledByApp) {
+                    Spacer(modifier = Modifier.height(3.dp))
+                    val badgeLabel = if (item.isCancelledByDatabase) {
+                        "Отменён приложением • номер в базе"
+                    } else {
+                        when (item.cancelReasonCode) {
+                            "SPOOFED_CALLER_ID" -> "Отменён приложением • подмена номера"
+                            "BLOCKED_FOREIGN_PLUS7" -> "Отменён приложением • зарубежный +7"
+                            else -> "Отменён приложением"
+                        }
+                    }
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(AppleRed.copy(alpha = 0.12f))
+                            .padding(horizontal = 7.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = badgeLabel,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = AppleRed
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(2.dp))
+                }
+                val categoryText = when (item.cancelCategory?.uppercase()) {
+                    "SURVEY" -> "Опросы / Колл-центр"
+                    "FINANCIAL" -> "Финансовый спам"
+                    "SILENT" -> "Автодозвон / Немой вызов"
+                    "SPOOFING" -> "ЕПВВ Антифрод"
+                    "FOREIGN_PLUS7" -> "Казахстан / зарубежный +7"
+                    else -> "Спам-база"
+                }
+                val subtitleText = when {
+                    item.isCancelledByDatabase -> "$categoryText • ${item.operatorName ?: "Оператор не указан"}"
+                    item.isCancelledByApp -> item.operatorName ?: categoryText
+                    item.cancelReasonCode == "SILENCED_DELIVERY" -> "Заглушен (Режим доставки) • ${item.operatorName ?: categoryText}"
+                    item.cancelReasonCode == "SILENCED_VIP_MODE" -> "Заглушен (VIP-режим)"
+                    item.isBlockedPool && item.callType != CallLog.Calls.OUTGOING_TYPE ->
+                        "Номер в базе спама (${item.operatorName ?: "Колл-центр"})"
+                    item.callType == CallLog.Calls.OUTGOING_TYPE ->
+                        if (item.durationSeconds > 0) "Исходящий вызов (${item.durationSeconds} сек)" else "Исходящий вызов"
+                    item.callType == CallLog.Calls.MISSED_TYPE -> "Пропущенный вызов"
+                    item.callType == CallLog.Calls.REJECTED_TYPE -> "Отклонён вручную"
+                    item.isSuspiciousShort -> "Короткий вызов (${item.durationSeconds} сек)"
+                    else -> "Входящий вызов (${item.durationSeconds} сек)"
+                }
+                val subtitleColor = when {
+                    item.isCancelledByApp -> AppleRed
+                    item.isBlockedPool && item.callType != CallLog.Calls.OUTGOING_TYPE -> AppleOrange
+                    item.cancelReasonCode == "SILENCED_DELIVERY" -> AppleBlue
+                    else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                }
                 Text(
-                    text = when {
-                        item.isBlockedPool -> "Сброшен спам-пул • ${item.operatorName ?: "Колл-центр"}"
-                        item.isSuspiciousShort -> "Короткий вызов (${item.durationSeconds} сек)"
-                        else -> "Входящий вызов (${item.durationSeconds} сек)"
-                    },
+                    text = subtitleText,
                     style = MaterialTheme.typography.bodyMedium,
                     fontSize = 13.sp,
-                    color = if (item.isBlockedPool) AppleRed else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                    color = subtitleColor
                 )
             }
 
@@ -281,8 +333,8 @@ private fun CallItemRow(
             )
         }
 
-        // Quick Actions for non-blocked calls
-        if (!item.isBlockedPool && !item.isWhitelisted) {
+        // Quick Actions
+        if (!item.isWhitelisted && (item.isCancelledByApp || !item.isBlockedPool)) {
             Spacer(modifier = Modifier.height(8.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -298,19 +350,21 @@ private fun CallItemRow(
                         color = AppleBlue
                     )
                 }
-                Spacer(modifier = Modifier.width(4.dp))
-                Button(
-                    onClick = onReportClick,
-                    colors = ButtonDefaults.buttonColors(containerColor = AppleOrange.copy(alpha = 0.15f)),
-                    shape = RoundedCornerShape(8.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
-                ) {
-                    Text(
-                        text = "Пожаловаться",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = AppleOrange
-                    )
+                if (!item.isCancelledByApp) {
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Button(
+                        onClick = onReportClick,
+                        colors = ButtonDefaults.buttonColors(containerColor = AppleOrange.copy(alpha = 0.15f)),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "Пожаловаться",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = AppleOrange
+                        )
+                    }
                 }
             }
         }
@@ -396,19 +450,23 @@ private fun AuditRecordRow(
     ) {
         val (icon, tint, desc) = when {
             record.blockReason == "SPOOFED_CALLER_ID" ->
-                Triple(Icons.Rounded.ReportProblem, AppleOrange, "Подмена номера (ЕПВВ Антифрод)")
+                Triple(Icons.Rounded.ReportProblem, AppleOrange, "Отменён • Подмена номера (ЕПВВ Антифрод)")
+            record.blockReason == "BLOCKED_FOREIGN_PLUS7" ->
+                Triple(Icons.Rounded.Block, AppleRed, "Отменён • Зарубежный +7 (${record.operatorName ?: "Казахстан"})")
             record.blockReason == "SILENCED_DELIVERY" ->
                 Triple(Icons.Rounded.Call, AppleBlue, "Тихий вызов (Режим ожидания доставки)")
+            record.blockReason == "SILENCED_VIP_MODE" ->
+                Triple(Icons.Rounded.Call, AppleBlue, "Тихий вызов (VIP-режим)")
             record.blockReason.contains("MICRO_100") ->
-                Triple(Icons.Rounded.Block, AppleRed, "Пул колл-центра (100 номеров) • Опросы (${record.operatorName ?: "Виртуальная АТС"})")
+                Triple(Icons.Rounded.Block, AppleRed, "Отменён (база, пул 100 номеров) • Опросы (${record.operatorName ?: "Виртуальная АТС"})")
             record.blockReason.contains("SUBPOOL_1000") ->
-                Triple(Icons.Rounded.Block, AppleRed, "Массовый автодозвон (1000 номеров) • ${record.operatorName ?: "Виртуальная АТС"}")
+                Triple(Icons.Rounded.Block, AppleRed, "Отменён (база, 1000 номеров) • ${record.operatorName ?: "Виртуальная АТС"}")
             record.blockReason.contains("SINGLE_NUMBER") ->
-                Triple(Icons.Rounded.Block, AppleRed, "Точечный спам-номер • ${record.operatorName ?: "Мобильный"}")
+                Triple(Icons.Rounded.Block, AppleRed, "Отменён (база) • Точечный спам-номер (${record.operatorName ?: "Мобильный"})")
             record.blockReason.contains("SURVEY_VCIOM") ->
-                Triple(Icons.Rounded.Block, AppleRed, "Опросы ВЦИОМ • Официальный пул")
+                Triple(Icons.Rounded.Block, AppleRed, "Отменён (база) • Опросы ВЦИОМ")
             else ->
-                Triple(Icons.Rounded.Block, AppleRed, "Сброшен спам-пул (${record.operatorName ?: "Виртуальная АТС"})")
+                Triple(Icons.Rounded.Block, AppleRed, "Отменён (в базе спам-пулов) • ${record.operatorName ?: "Виртуальная АТС"}")
         }
 
         Box(

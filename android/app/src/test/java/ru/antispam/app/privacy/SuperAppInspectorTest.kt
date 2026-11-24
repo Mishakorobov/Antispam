@@ -61,6 +61,15 @@ class SuperAppInspectorTest {
         val (riskGms, catGms, _) = SuperAppInspector.classifyRisk("com.google.android.gms", perms, isSystemApp = true)
         assertEquals(SuperAppRiskLevel.SAFE, riskGms)
         assertEquals(SuperAppCategory.SYSTEM_COMPONENT, catGms)
+
+        // Core Samsung One UI Home launcher and Galaxy Store must be treated as safe core system apps
+        val (riskOneUi, catOneUi, _) = SuperAppInspector.classifyRisk("com.sec.android.app.launcher", perms, isSystemApp = true)
+        assertEquals(SuperAppRiskLevel.SAFE, riskOneUi)
+        assertEquals(SuperAppCategory.SYSTEM_COMPONENT, catOneUi)
+
+        val (riskGalaxyStore, catGalaxyStore, _) = SuperAppInspector.classifyRisk("com.sec.android.app.samsungapps", perms, isSystemApp = true)
+        assertEquals(SuperAppRiskLevel.SAFE, riskGalaxyStore)
+        assertEquals(SuperAppCategory.SYSTEM_COMPONENT, catGalaxyStore)
     }
 
     @Test

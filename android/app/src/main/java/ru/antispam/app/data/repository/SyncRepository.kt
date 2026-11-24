@@ -439,4 +439,58 @@ class SyncRepository(
         db.pendingReportDao().deleteByIds(pending.map { it.id })
         Log.i(TAG, "Successfully flushed ${pending.size} reports to ${if (NetworkModule.isServerlessMode) "Cloudflare Worker Bridge" else "Primary Server"}")
     }
+
+    /**
+     * Submits a single spam/survey report via the active backend mode (Serverless PoW Worker Bridge
+     * or primary REST API), falling back to the local offline queue if the network request fails.
+     */
+    suspend fun submitOrQueueReport(
+        phoneNumber: Long,
+        deviceHash: String,
+        category: String = "SPAM",
+        callDurationSeconds: Int? = null
+    ): Boolean = withContext(Dispatchers.IO) {
+        try {
+            if (NetworkModule.isServerlessMode) {
+                val powSolution = ru.antispam.app.data.remote.PowGenerator.solve(
+                    phoneNumber = phoneNumber.toString(),
+                    deviceHash = deviceHash
+                )
+                val batchPayload = BatchReportRequestDto(
+                    deviceHash = deviceHash,
+                    reports = listOf(
+                        BatchReportItemDto(
+                            phoneNumber = phoneNumber.toString(),
+                            category = category,
+                            callDurationSeconds = callDurationSeconds
+                        )
+                    ),
+                    powNonce = powSolution.nonce,
+                    powTimestamp = powSolution.timestamp
+                )
+                NetworkModule.serverlessReportApiService.submitBatchReports(batchPayload)
+            } else {
+                api.submitReport(
+                    ru.antispam.app.data.remote.dto.SingleReportRequest(
+                        phoneNumber = phoneNumber.toString(),
+                        deviceHash = deviceHash,
+                        category = category,
+                        callDurationSeconds = callDurationSeconds
+                    )
+                )
+            }
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "Immediate report upload failed (${e.message}), queuing offline for +$phoneNumber")
+            db.pendingReportDao().insert(
+                ru.antispam.app.data.local.entity.PendingReportEntity(
+                    phoneNumber = phoneNumber,
+                    category = category,
+                    callDurationSeconds = callDurationSeconds,
+                    createdAt = System.currentTimeMillis()
+                )
+            )
+            false
+        }
+    }
 }

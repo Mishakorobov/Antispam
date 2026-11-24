@@ -159,6 +159,17 @@ fun WhitelistScreen(
                     }
                 }
 
+                if (!state.errorMessage.isNullOrBlank()) {
+                    item {
+                        Text(
+                            text = state.errorMessage!!,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+
                 if (state.localEntries.isEmpty()) {
                     item {
                         AppleGroupedCard {
@@ -189,7 +200,7 @@ fun WhitelistScreen(
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
-                                            text = "+${entry.phoneNumber}",
+                                            text = ru.antispam.app.util.PhoneNormalizer.formatRussian(entry.phoneNumber),
                                             style = MaterialTheme.typography.titleMedium,
                                             fontWeight = FontWeight.SemiBold,
                                             color = MaterialTheme.colorScheme.onSurface

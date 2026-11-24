@@ -46,6 +46,13 @@ object SpeakerphoneMonitor {
     fun startMonitoring(context: Context) {
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
 
+        // Clean up any previous listener/polling loop if called repeatedly
+        if (deviceCallback != null || pollingJob != null) {
+            stopMonitoring(context)
+        }
+
+        ensureAlertChannel(context)
+
         // 1. Check initial state
         checkSpeakerphoneState(context, audioManager)
 
@@ -72,6 +79,20 @@ object SpeakerphoneMonitor {
             }
         }
         Log.d(TAG, "SpeakerphoneMonitor started")
+    }
+
+    private fun ensureAlertChannel(context: Context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            if (nm.getNotificationChannel(CHANNEL_SPEAKER_ALERT_ID) == null) {
+                val channel = android.app.NotificationChannel(
+                    CHANNEL_SPEAKER_ALERT_ID,
+                    "Предупреждения о перехвате микрофона",
+                    NotificationManager.IMPORTANCE_HIGH
+                )
+                nm.createNotificationChannel(channel)
+            }
+        }
     }
 
     private fun checkSpeakerphoneState(context: Context, audioManager: AudioManager) {

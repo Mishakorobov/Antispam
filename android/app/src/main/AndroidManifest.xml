@@ -19,7 +19,7 @@
     <!-- Phase 5: Call Privacy Shield & Mic Guard permissions -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <!-- Phase 10.3 & 13.5: Battery optimization exemption for persistent call screening & mic guard -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
@@ -72,11 +72,15 @@
             </intent-filter>
         </service>
 
-        <!-- Phase 5: MicGuardService for Call Privacy Shield (Foreground Service for audio inspection) -->
+        <!-- Phase 5: MicGuardService for Call Privacy Shield (monitors audio recording callbacks and speakerphone state) -->
         <service
             android:name=".privacy.MicGuardService"
             android:exported="false"
-            android:foregroundServiceType="microphone" />
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Cellular call privacy monitoring: registers AudioRecordingCallback and speakerphone audio device state during calls without capturing microphone audio." />
+        </service>
 
         <!-- Phase 6.5: Quick Settings Tile for Delivery Mode ("Жду курьера") -->
         <service

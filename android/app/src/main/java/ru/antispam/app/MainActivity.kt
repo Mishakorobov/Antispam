@@ -93,7 +93,7 @@ class MainActivity : ComponentActivity() {
             ru.antispam.app.util.ContactLookupHelper.invalidateCache()
         }
         callLogViewModel.refreshData()
-        privacyViewModel.refreshScan()
+        privacyViewModel.refreshScan(force = true)
     }
 
     private fun requestEssentialPermissions() {
