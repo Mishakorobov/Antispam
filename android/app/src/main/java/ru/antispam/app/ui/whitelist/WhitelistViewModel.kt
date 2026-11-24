@@ -14,6 +14,7 @@ import ru.antispam.app.data.local.entity.LocalWhitelistEntity
 import ru.antispam.app.data.remote.NetworkModule
 import ru.antispam.app.data.remote.dto.WhitelistGroupDto
 import ru.antispam.app.data.remote.dto.WhitelistToggleRequestDto
+import ru.antispam.app.util.OfficialWhitelistRegistry
 import ru.antispam.app.util.PhoneNormalizer
 
 data class WhitelistUiState(
@@ -47,12 +48,16 @@ class WhitelistViewModel(application: Application) : AndroidViewModel(applicatio
             // 1. Load local whitelist
             val locals = db.localWhitelistDao().getAll()
 
-            // 2. Load server groups from API (with fallback if offline)
-            val groups = try {
-                api.getWhitelistGroups()
-            } catch (_: Exception) {
-                // Fallback default list if backend is currently unreachable
-                getDefaultFallbackGroups()
+            // 2. Load official bank/gov/emergency groups (serverless local prefs, or REST API)
+            val app = getApplication<Application>()
+            val groups = if (NetworkModule.isServerlessMode) {
+                OfficialWhitelistRegistry.getGroupsWithLocalPrefs(app)
+            } else {
+                try {
+                    api.getWhitelistGroups()
+                } catch (_: Exception) {
+                    OfficialWhitelistRegistry.getGroupsWithLocalPrefs(app)
+                }
             }
 
             _uiState.update {
@@ -67,6 +72,9 @@ class WhitelistViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun toggleServerGroup(groupKey: String, enable: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
+            val app = getApplication<Application>()
+            OfficialWhitelistRegistry.setGroupEnabled(app, groupKey, enable)
+
             // Optimistic UI update
             _uiState.update { current ->
                 val updated = current.serverGroups.map { g ->
@@ -75,25 +83,34 @@ class WhitelistViewModel(application: Application) : AndroidViewModel(applicatio
                 current.copy(serverGroups = updated)
             }
 
-            try {
-                api.toggleWhitelistGroup(groupKey, WhitelistToggleRequestDto(enable = enable))
-            } catch (e: Exception) {
-                // Revert on failure
-                loadData()
+            if (!NetworkModule.isServerlessMode) {
+                try {
+                    api.toggleWhitelistGroup(groupKey, WhitelistToggleRequestDto(enable = enable))
+                } catch (_: Exception) {
+                    // Keep local toggle active; server sync can catch up later
+                }
             }
         }
     }
 
     fun addLocalNumber(rawNumber: String, label: String?) {
         viewModelScope.launch(Dispatchers.IO) {
-            val normalized = PhoneNormalizer.normalize(rawNumber) ?: return@launch
+            val normalized = PhoneNormalizer.normalize(rawNumber)
+                ?: PhoneNormalizer.normalizeShortCode(rawNumber)
+                ?: run {
+                    _uiState.update {
+                        it.copy(errorMessage = "Введите корректный номер телефона (например, +79991234567 или 900)")
+                    }
+                    return@launch
+                }
             db.localWhitelistDao().add(
                 LocalWhitelistEntity(
                     phoneNumber = normalized,
-                    label = label ?: "Доверенный номер",
+                    label = label?.takeIf { it.isNotBlank() } ?: "Доверенный номер",
                     addedAt = System.currentTimeMillis()
                 )
             )
+            _uiState.update { it.copy(errorMessage = null) }
             loadData()
         }
     }
@@ -103,58 +120,5 @@ class WhitelistViewModel(application: Application) : AndroidViewModel(applicatio
             db.localWhitelistDao().remove(phoneNumber)
             loadData()
         }
-    }
-
-    private fun getDefaultFallbackGroups(): List<WhitelistGroupDto> {
-        return listOf(
-            WhitelistGroupDto(
-                groupKey = "EMERGENCY",
-                category = "EMERGENCY",
-                isEnabled = true,
-                rangeCount = 2,
-                description = "Единая служба спасения 112, 101, 102, 103, 104",
-                ranges = emptyList()
-            ),
-            WhitelistGroupDto(
-                groupKey = "GOV",
-                category = "GOV",
-                isEnabled = true,
-                rangeCount = 3,
-                description = "Госуслуги (0919, 8-800-100-70-10), Социальный фонд",
-                ranges = emptyList()
-            ),
-            WhitelistGroupDto(
-                groupKey = "SBERBANK",
-                category = "BANK",
-                isEnabled = true,
-                rangeCount = 3,
-                description = "Сбербанк (900, 8-800-555-55-50)",
-                ranges = emptyList()
-            ),
-            WhitelistGroupDto(
-                groupKey = "TBANK",
-                category = "BANK",
-                isEnabled = true,
-                rangeCount = 4,
-                description = "Т-Банк (Линии 8-800, Московский офис)",
-                ranges = emptyList()
-            ),
-            WhitelistGroupDto(
-                groupKey = "VTB",
-                category = "BANK",
-                isEnabled = true,
-                rangeCount = 2,
-                description = "ВТБ (1000, 8-800-100-24-24)",
-                ranges = emptyList()
-            ),
-            WhitelistGroupDto(
-                groupKey = "ALFABANK",
-                category = "BANK",
-                isEnabled = true,
-                rangeCount = 2,
-                description = "Альфа-Банк (8-800-200-00-00)",
-                ranges = emptyList()
-            )
-        )
     }
 }

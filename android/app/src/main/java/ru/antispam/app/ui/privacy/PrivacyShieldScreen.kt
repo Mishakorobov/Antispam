@@ -93,6 +93,7 @@ import ru.antispam.app.privacy.model.PackagePrivacyProfile
 import ru.antispam.app.privacy.model.RussianAppRegistry
 import ru.antispam.app.privacy.model.SecurityIssue
 import ru.antispam.app.privacy.model.SecurityScoreReport
+import ru.antispam.app.privacy.model.SuperAppCategory
 import ru.antispam.app.privacy.model.SuperAppRiskLevel
 import ru.antispam.app.privacy.model.TriangulationRiskApp
 import ru.antispam.app.privacy.model.TriangulationRiskLevel
@@ -2083,15 +2084,20 @@ private fun SuperAppAuditCard(
                         horizontalArrangement = Arrangement.spacedBy(2.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        TextButton(
-                            onClick = onOpenDeepSleep
+                        if (!profile.isDeepSleeping &&
+                            !profile.isSystemApp &&
+                            profile.category != SuperAppCategory.APP_STORE_OR_LAUNCHER
                         ) {
-                            Text(
-                                text = "В сон",
-                                fontSize = 12.sp,
-                                color = AppleOrange,
-                                fontWeight = FontWeight.SemiBold
-                            )
+                            TextButton(
+                                onClick = onOpenDeepSleep
+                            ) {
+                                Text(
+                                    text = "В сон",
+                                    fontSize = 12.sp,
+                                    color = AppleOrange,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
                         }
                         TextButton(
                             onClick = { onTrustApp(profile.packageName) }
@@ -2630,17 +2636,19 @@ private fun TriangulationAuditCard(
                         }
                     }
 
-                    Spacer(modifier = Modifier.width(8.dp))
+                    if (!app.isDeepSleeping && !app.isTrusted) {
+                        Spacer(modifier = Modifier.width(8.dp))
 
-                    TextButton(
-                        onClick = { onOpenAppDetails(app.packageName) }
-                    ) {
-                        Text(
-                            text = "Ограничить",
-                            fontSize = 12.sp,
-                            color = AppleBlue,
-                            fontWeight = FontWeight.SemiBold
-                        )
+                        TextButton(
+                            onClick = { onOpenAppDetails(app.packageName) }
+                        ) {
+                            Text(
+                                text = "Ограничить",
+                                fontSize = 12.sp,
+                                color = AppleBlue,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
                     }
                 }
             }

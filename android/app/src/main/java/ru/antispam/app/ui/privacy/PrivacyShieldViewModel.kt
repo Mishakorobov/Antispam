@@ -216,15 +216,23 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
     }
 
     private var lastScanTimeMs = 0L
+    private var scanJob: kotlinx.coroutines.Job? = null
 
     fun refreshScan(force: Boolean = false) {
         val now = System.currentTimeMillis()
-        if (!force && now - lastScanTimeMs < 10_000L && _uiState.value.scannedApps.isNotEmpty()) {
-            return
+        if (!force) {
+            if (scanJob?.isActive == true) {
+                return
+            }
+            if (now - lastScanTimeMs < 10_000L && _uiState.value.scannedApps.isNotEmpty()) {
+                return
+            }
+        } else {
+            scanJob?.cancel()
         }
         lastScanTimeMs = now
         _uiState.update { it.copy(isScanning = true) }
-        viewModelScope.launch(Dispatchers.IO) {
+        scanJob = viewModelScope.launch(Dispatchers.IO) {
             val apps = PrivacyScannerHelper.scanInstalledApps(getApplication())
             val criticalCount = apps.count { it.riskLevel == PrivacyRiskLevel.CRITICAL && !it.isDeepSleeping }
             val highCount = apps.count { it.riskLevel == PrivacyRiskLevel.HIGH && !it.isDeepSleeping }
@@ -412,6 +420,11 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
                 RemediationActionType.SYSTEM_REVOKE_NOTIFICATION_LISTENER -> {
                     toggleTrustNotificationListener(pkg)
                 }
+                RemediationActionType.SYSTEM_MANAGE_PERMISSIONS,
+                RemediationActionType.SYSTEM_RESTRICT_LOCATION -> {
+                    TrustedAppManager.setAppTrusted(getApplication(), pkg, isTrusted = true)
+                    refreshScan(force = true)
+                }
                 else -> {}
             }
             advanceWizardStep()
@@ -430,6 +443,7 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
                 val resolved = OneClickRemediationEngine.quickVerifyStep(getApplication(), step)
                 if (resolved) {
                     advanceWizardStep()
+                    refreshScan(force = true)
                 }
             }
         }
@@ -563,7 +577,7 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
      */
     fun markCallForwardingCleared() {
         CallForwardingAuditor.markAllForwardingCleared(getApplication())
-        refreshScan()
+        refreshScan(force = true)
     }
 
     /**
@@ -612,7 +626,10 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
 
     fun toggleMicGuard(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_MIC_GUARD_ENABLED, enabled).apply()
-        _uiState.update { it.copy(isMicGuardEnabled = enabled) }
+        _uiState.update { state ->
+            val updated = state.copy(isMicGuardEnabled = enabled)
+            updated.copy(securityScoreReport = rebuildScoreReport(updated))
+        }
     }
 
     fun toggleJammerAutoEnabled(enabled: Boolean) {
@@ -622,7 +639,10 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
 
     fun toggleClipboardGuard(enabled: Boolean) {
         prefs.edit().putBoolean(ClipboardGuardManager.KEY_CLIPBOARD_GUARD_ENABLED, enabled).apply()
-        _uiState.update { it.copy(isClipboardGuardEnabled = enabled) }
+        _uiState.update { state ->
+            val updated = state.copy(isClipboardGuardEnabled = enabled)
+            updated.copy(securityScoreReport = rebuildScoreReport(updated))
+        }
         ClipboardGuardManager.updateStateFromPreferences(getApplication())
     }
 
@@ -719,26 +739,11 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
         val highRiskCount = updatedListeners.count { it.riskLevel == ListenerRiskLevel.HIGH && !it.isTrusted && !it.isDeepSleeping }
 
         _uiState.update { state ->
-            val hasRootAdvisory = state.securityScoreReport?.issues?.any { it.type == SecurityIssueType.ROOT_OR_HOOK_ENVIRONMENT } == true
-            val isRegOk = (state.securityScoreReport?.categoryBreakdown?.get("Реестр Минцифры") ?: 0) > 0
-            val updatedInput = PrivacyAuditInput(
-                isRegistryUpToDate = isRegOk,
-                isMicGuardEnabled = state.isMicGuardEnabled,
-                hasNotificationSpies = highRiskCount > 0,
-                isClipboardGuardEnabled = state.isClipboardGuardEnabled,
-                hasMitmRootCa = state.hasMitmThreat,
-                hasCriticalAccessibility = state.criticalAccessibilityCount > 0,
-                hasVpnInventoryExposed = state.isVpnInventoryExposed,
-                hasStealthGeoTrackers = state.triangulationCriticalCount > 0,
-                hasRootOrHooks = hasRootAdvisory,
-                hasCallForwarding = state.callForwardingReport.hasActiveForwarding,
-                hasActive2GConnection = state.cellularSecurityReport.is2GActive
-            )
-            state.copy(
+            val updated = state.copy(
                 notificationListeners = updatedListeners,
-                highRiskListenersCount = highRiskCount,
-                securityScoreReport = SecurityScoreEngine.calculateScore(updatedInput)
+                highRiskListenersCount = highRiskCount
             )
+            updated.copy(securityScoreReport = rebuildScoreReport(updated))
         }
     }
 
@@ -761,27 +766,34 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
         val criticalCount = updatedServices.count { it.riskLevel == AccessibilityRiskLevel.CRITICAL && !it.isTrusted && !it.isDeepSleeping }
 
         _uiState.update { state ->
-            val hasRootAdvisory = state.securityScoreReport?.issues?.any { it.type == SecurityIssueType.ROOT_OR_HOOK_ENVIRONMENT } == true
-            val isRegOk = (state.securityScoreReport?.categoryBreakdown?.get("Реестр Минцифры") ?: 0) > 0
-            val updatedInput = PrivacyAuditInput(
-                isRegistryUpToDate = isRegOk,
-                isMicGuardEnabled = state.isMicGuardEnabled,
-                hasNotificationSpies = state.highRiskListenersCount > 0,
-                isClipboardGuardEnabled = state.isClipboardGuardEnabled,
-                hasMitmRootCa = state.hasMitmThreat,
-                hasCriticalAccessibility = criticalCount > 0,
-                hasVpnInventoryExposed = state.isVpnInventoryExposed,
-                hasStealthGeoTrackers = state.triangulationCriticalCount > 0,
-                hasRootOrHooks = hasRootAdvisory,
-                hasCallForwarding = state.callForwardingReport.hasActiveForwarding,
-                hasActive2GConnection = state.cellularSecurityReport.is2GActive
-            )
-            state.copy(
+            val updated = state.copy(
                 accessibilityServices = updatedServices,
-                criticalAccessibilityCount = criticalCount,
-                securityScoreReport = SecurityScoreEngine.calculateScore(updatedInput)
+                criticalAccessibilityCount = criticalCount
             )
+            updated.copy(securityScoreReport = rebuildScoreReport(updated))
         }
+    }
+
+    private fun rebuildScoreReport(state: PrivacyShieldUiState): SecurityScoreReport {
+        val hasRootAdvisory = state.securityScoreReport?.issues?.any {
+            it.type == SecurityIssueType.ROOT_OR_HOOK_ENVIRONMENT
+        } == true
+        val isRegOk = (state.securityScoreReport?.categoryBreakdown?.get("Реестр Минцифры") ?: 0) > 0
+        val updatedInput = PrivacyAuditInput(
+            isRegistryUpToDate = isRegOk,
+            isMicGuardEnabled = state.isMicGuardEnabled,
+            hasNotificationSpies = state.highRiskListenersCount > 0,
+            isClipboardGuardEnabled = state.isClipboardGuardEnabled,
+            hasMitmRootCa = state.hasMitmThreat,
+            hasCriticalAccessibility = state.criticalAccessibilityCount > 0,
+            hasVpnInventoryExposed = state.isVpnInventoryExposed,
+            hasStealthGeoTrackers = state.triangulationCriticalCount > 0,
+            hasRootOrHooks = hasRootAdvisory,
+            hasCallForwarding = state.callForwardingReport.hasActiveForwarding,
+            hasActive2GConnection = state.cellularSecurityReport.is2GActive,
+            hasUntrustedAppThreats = state.criticalAppsCount > 0
+        )
+        return SecurityScoreEngine.calculateScore(updatedInput)
     }
 
     fun preparePermissionRevocation(appName: String, packageName: String) {
@@ -821,7 +833,7 @@ class PrivacyShieldViewModel(application: Application) : AndroidViewModel(applic
             } else {
                 _uiState.update { it.copy(pendingRevokePkg = null, pendingRevokeAppName = null) }
             }
-            refreshScan()
+            refreshScan(force = true)
         }
     }
 

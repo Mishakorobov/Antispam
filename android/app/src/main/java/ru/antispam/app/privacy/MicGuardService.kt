@@ -1,5 +1,6 @@
 package ru.antispam.app.privacy
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -7,6 +8,8 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
 import android.media.AudioManager
 import android.media.AudioRecordingConfiguration
 import android.media.MediaRecorder
@@ -19,6 +22,7 @@ import android.os.Vibrator
 import android.os.VibratorManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -40,6 +44,7 @@ class MicGuardService : Service() {
         val lastAlert: StateFlow<String?> = _lastAlert.asStateFlow()
 
         fun startGuard(context: Context) {
+            if (_isMonitoring.value) return
             val intent = Intent(context, MicGuardService::class.java).apply {
                 action = ACTION_START_GUARD
             }
@@ -55,11 +60,9 @@ class MicGuardService : Service() {
         }
 
         fun stopGuard(context: Context) {
-            val intent = Intent(context, MicGuardService::class.java).apply {
-                action = ACTION_STOP_GUARD
-            }
+            if (!_isMonitoring.value) return
             try {
-                context.startService(intent)
+                context.stopService(Intent(context, MicGuardService::class.java))
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to stop MicGuardService: ${e.message}", e)
             }
@@ -88,20 +91,42 @@ class MicGuardService : Service() {
         return START_NOT_STICKY
     }
 
-    private fun startMonitoring() {
-        if (_isMonitoring.value) return
+    private fun hasRecordAudioPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+    }
 
+    private fun startMonitoring() {
         val notification = createForegroundNotification()
-        startForeground(NOTIFICATION_ID, notification)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (t: Throwable) {
+            Log.e(TAG, "Unable to elevate MicGuardService to foreground: ${t.message}", t)
+            _isMonitoring.value = false
+            stopSelf()
+            return
+        }
+
+        if (_isMonitoring.value) return
         _isMonitoring.value = true
         Log.i(TAG, "Call Privacy Shield: MicGuard monitoring started")
 
         // Phase 5.3: Activate Speakerphone monitor during call
         SpeakerphoneMonitor.startMonitoring(this)
 
-        // Phase 5.3: Check if automatic preemptive jamming is configured
+        // Phase 5.3: Check if automatic preemptive jamming is configured and permission is granted
         val privacyPrefs = getSharedPreferences("antispam_privacy_prefs", Context.MODE_PRIVATE)
-        if (privacyPrefs.getBoolean("mic_jammer_auto_enabled", true)) {
+        if (privacyPrefs.getBoolean("mic_jammer_auto_enabled", true) && hasRecordAudioPermission()) {
             MicJammerManager.startJamming(this)
         }
 
@@ -165,7 +190,9 @@ class MicGuardService : Service() {
             _lastAlert.value = message
 
             // Phase 5.3: Instantly activate Heuristic Mic Jammer to silence the eavesdropping app
-            MicJammerManager.startJamming(this)
+            if (hasRecordAudioPermission()) {
+                MicJammerManager.startJamming(this)
+            }
 
             triggerEavesdroppingAlert(message)
         }
@@ -229,7 +256,7 @@ class MicGuardService : Service() {
         }
     }
 
-    private fun stopMonitoring() {
+    private fun cleanupMonitoring() {
         // Phase 5.3: Stop Jammer and Speakerphone monitors
         MicJammerManager.stopJamming(this)
         SpeakerphoneMonitor.stopMonitoring(this)
@@ -243,7 +270,13 @@ class MicGuardService : Service() {
             recordingCallback = null
         }
         _isMonitoring.value = false
-        stopForeground(STOP_FOREGROUND_REMOVE)
+        try {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } catch (_: Exception) {}
+    }
+
+    private fun stopMonitoring() {
+        cleanupMonitoring()
         stopSelf()
         Log.i(TAG, "Call Privacy Shield: MicGuard monitoring stopped")
     }
@@ -299,7 +332,7 @@ class MicGuardService : Service() {
     }
 
     override fun onDestroy() {
-        stopMonitoring()
+        cleanupMonitoring()
         super.onDestroy()
     }
 

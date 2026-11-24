@@ -56,13 +56,11 @@ object SuperAppInspector {
      */
     val KNOWN_UTILITY_LAUNCHERS_AND_STORES = setOf(
         "com.android.vending",
-        "com.google.android.apps.nexuslauncher",
         "com.android.launcher3",
         "com.teslacoilsw.launcher",
         "bitpit.launcher",
         "com.huawei.appmarket",
-        "com.xiaomi.mipicks",
-        "com.sec.android.app.samsungapps"
+        "com.xiaomi.mipicks"
     )
 
     /**
@@ -148,7 +146,10 @@ object SuperAppInspector {
         }
 
         // 2. Official App Stores or Launchers (need package visibility for home screen / updates)
-        if (KNOWN_UTILITY_LAUNCHERS_AND_STORES.contains(lowerPkg) || lowerPkg.contains("launcher")) {
+        // Core OEM system packages (e.g. Samsung One UI Home / Galaxy Store) fall through to Step 3 SAFE.
+        val isExplicitUtilityStoreOrLauncher = KNOWN_UTILITY_LAUNCHERS_AND_STORES.contains(lowerPkg) ||
+            (lowerPkg.contains("launcher") && lowerPkg !in KNOWN_CORE_SYSTEM && !isSystemApp)
+        if (isExplicitUtilityStoreOrLauncher) {
             return Triple(
                 SuperAppRiskLevel.MEDIUM,
                 SuperAppCategory.APP_STORE_OR_LAUNCHER,
@@ -273,8 +274,8 @@ object SuperAppInspector {
                 val isDeepSleeping = AppDormancyHelper.isAppInDeepSleep(context, pkgName)
                 val isTrusted = TrustedAppManager.isSuperAppTrusted(context, pkgName)
 
-                // Exclude safe system components and user-trusted apps completely: prevents cluttering user UI
-                if (riskLevel == SuperAppRiskLevel.SAFE || isTrusted) {
+                // Exclude safe system components, user-trusted apps, and deep-sleeping apps
+                if (riskLevel == SuperAppRiskLevel.SAFE || isTrusted || isDeepSleeping) {
                     continue
                 }
 

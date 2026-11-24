@@ -14,8 +14,8 @@ android {
         applicationId = "ru.antispam.app"
         minSdk = 29 // Android 10+ for RoleManager.ROLE_CALL_SCREENING
         targetSdk = 35
-        versionCode = 5
-        versionName = "1.4.0"
+        versionCode = 6
+        versionName = "1.4.1"
 
         buildConfigField(
             "String",
